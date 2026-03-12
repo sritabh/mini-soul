@@ -228,17 +228,26 @@
     tickClock();
     setInterval(tickClock, 1000);
 
-    function handleSubmit(e) {
+    async function handleSubmit(e) {
       e.preventDefault();
       const btn = e.submitter;
       const payload = { name: document.getElementById('name').value.trim(), time: timeInput.value };
       btn.disabled = true;
       btn.textContent = 'Saving…';
-      setTimeout(() => {
-        console.log(payload);
+      try {
+        const res = await fetch('/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        btn.textContent = res.ok ? 'Saved!' : 'Error!';
+      } catch (err) {
+        console.error(err);
+        btn.textContent = 'Error!';
+      } finally {
         btn.disabled = false;
-        btn.textContent = 'Save';
-      }, 2000);
+        setTimeout(() => { btn.textContent = 'Save'; }, 1500);
+      }
     }
   </script>
 
