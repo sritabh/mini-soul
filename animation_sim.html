@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OLED Animator</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --surface: #111116;
+    --surface2: #18181f;
+    --border: #2a2a35;
+    --border2: #3a3a48;
+    --accent: #00e5a0;
+    --accent2: #00b87a;
+    --accent-dim: rgba(0,229,160,0.12);
+    --accent-dim2: rgba(0,229,160,0.06);
+    --text: #e8e8f0;
+    --text-muted: #6b6b80;
+    --text-dim: #9494a8;
+    --oled-on: #ffffff;
+    --oled-off: #080810;
+    --danger: #ff4d6a;
+    --warn: #ffb547;
+    --pixel-size: 5px;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-ui: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: var(--font-ui);
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+  .logo span { color: var(--text-dim); font-weight: 400; font-size: 12px; margin-left: 10px; }
+
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* ── Layout ── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 556px 1fr;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Left Panel ── */
+  .left-panel {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .panel-section {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+
+  /* ── OLED Display ── */
+  .oled-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .oled-bezel {
+    background: #050508;
+    border: 2px solid #1e1e28;
+    border-radius: 6px;
+    padding: 10px;
+    box-shadow:
+      0 0 0 1px #0d0d14,
+      0 8px 32px rgba(0,0,0,0.8),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+    position: relative;
+  }
+
+  .oled-bezel::before {
+    content: 'SSD1306 128×64';
+    position: absolute;
+    top: -18px;
+    left: 0;
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+  }
+
+  #oled-canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: var(--oled-off);
+    width: 512px;
+    height: 256px;
+  }
+
+  .oled-info {
+    display: flex;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .oled-info span { color: var(--accent); }
+
+  /* ── Playback Controls ── */
+  .playback-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 4px;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim2); }
+  .btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+  .btn.primary:hover { background: var(--accent2); border-color: var(--accent2); }
+  .btn.danger { border-color: var(--danger); color: var(--danger); }
+  .btn.danger:hover { background: rgba(255,77,106,0.1); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn:disabled:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+
+  /* ── FPS Control ── */
+  .fps-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .fps-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .fps-input {
+    width: 52px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 4px 8px;
+    text-align: center;
+    outline: none;
+  }
+  .fps-input:focus { border-color: var(--accent); }
+
+  /* ── Speed ── */
+  .speed-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .speed-btns { display: flex; gap: 2px; }
+  .speed-btn {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 3px 7px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .speed-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim2); }
+  .speed-btn:hover { border-color: var(--border2); color: var(--text); }
+
+  /* ── Timeline ── */
+  .timeline-section {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .frame-counter {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .frame-counter span { color: var(--accent); font-weight: 700; }
+
+  .timeline-track {
+    position: relative;
+    height: 28px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .timeline-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--accent-dim);
+    border-right: 2px solid var(--accent);
+    transition: width 0.05s linear;
+    pointer-events: none;
+  }
+
+  .timeline-frames {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  .timeline-tick {
+    position: absolute;
+    top: 4px; bottom: 4px;
+    width: 1px;
+    background: var(--border2);
+    opacity: 0.5;
+  }
+
+  .timeline-scrubber {
+    width: 100%;
+    appearance: none;
+    height: 28px;
+    background: transparent;
+    position: absolute;
+    top: 0; left: 0;
+    margin: 0;
+    cursor: pointer;
+    opacity: 0;
+  }
+
+  /* ── Emotion Quick-Picker ── */
+  .emotion-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  .emotion-btn {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 5px 4px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    letter-spacing: 0.02em;
+  }
+  .emotion-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim2); }
+  .emotion-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+
+  /* ── Status Bar ── */
+  .status-bar {
+    padding: 6px 16px;
+    font-size: 9px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    letter-spacing: 0.03em;
+  }
+
+  .status-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    display: inline-block;
+    margin-right: 4px;
+  }
+  .status-dot.running { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .status-dot.error { background: var(--danger); }
+  .status-dot.ready { background: var(--warn); }
+
+  .status-msg { flex: 1; }
+
+  /* ── Right Panel: Editor ── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  .editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .editor-tabs {
+    display: flex;
+    gap: 2px;
+  }
+
+  .editor-tab {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 5px 12px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+  .editor-tab.active { border-color: var(--border2); background: var(--surface2); color: var(--text); }
+  .editor-tab:hover:not(.active) { color: var(--text-dim); }
+
+  .editor-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .editor-area {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .code-editor {
+    width: 100%;
+    height: 100%;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: #c9d1d9;
+    background: var(--bg);
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 16px 20px;
+    tab-size: 4;
+    display: none;
+  }
+  .code-editor.active-tab { display: block; }
+
+  /* Scrollbar */
+  .code-editor::-webkit-scrollbar { width: 6px; }
+  .code-editor::-webkit-scrollbar-track { background: transparent; }
+  .code-editor::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* ── Python output ── */
+  .python-out {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.65;
+    color: #c9d1d9;
+    background: var(--bg);
+    padding: 16px 20px;
+    overflow: auto;
+    white-space: pre;
+    display: none;
+  }
+  .python-out.active-tab { display: block; }
+  .python-out::-webkit-scrollbar { width: 6px; }
+  .python-out::-webkit-scrollbar-track { background: transparent; }
+  .python-out::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* ── Error overlay ── */
+  .error-panel {
+    background: rgba(255,77,106,0.08);
+    border-top: 1px solid rgba(255,77,106,0.3);
+    padding: 8px 16px;
+    font-size: 11px;
+    color: var(--danger);
+    font-family: var(--font-mono);
+    max-height: 80px;
+    overflow-y: auto;
+    display: none;
+    flex-shrink: 0;
+  }
+  .error-panel.visible { display: block; }
+
+  /* ── Pixel grid toggle ── */
+  .pixel-grid { image-rendering: pixelated; }
+
+  /* ── Tooltip ── */
+  [title] { cursor: help; }
+
+  /* ── Kbd shortcut hints ── */
+  .kbd {
+    display: inline-block;
+    font-size: 9px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
+
+  /* ── Loop indicator ── */
+  .loop-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    display: none;
+  }
+  .loop-badge.visible { display: inline-block; }
+
+  /* ── Pixel count ── */
+  .pixel-stat {
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+  .pixel-stat span { color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div class="logo">OLED ANIMATOR <span>SSD1306 simulator</span></div>
+    <div class="loop-badge" id="loopBadge">∞ LOOP</div>
+  </div>
+  <div class="header-controls">
+    <div class="fps-control">
+      <span class="fps-label">FPS</span>
+      <input type="number" class="fps-input" id="fpsInput" value="22" min="1" max="60" title="Target frame rate">
+    </div>
+    <div class="speed-control">
+      <span>SPEED</span>
+      <div class="speed-btns">
+        <button class="speed-btn" data-speed="0.25">¼×</button>
+        <button class="speed-btn" data-speed="0.5">½×</button>
+        <button class="speed-btn active" data-speed="1">1×</button>
+        <button class="speed-btn" data-speed="2">2×</button>
+        <button class="speed-btn" data-speed="5">5×</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <!-- Left Panel -->
+  <div class="left-panel">
+
+    <!-- OLED Display -->
+    <div class="oled-wrapper">
+      <div class="oled-bezel">
+        <canvas id="oled-canvas" width="640" height="320"></canvas>
+      </div>
+      <div class="oled-info">
+        <div>FRAME <span id="frameNum">—</span></div>
+        <div>TIME <span id="frameTime">—</span></div>
+        <div class="pixel-stat">LIT <span id="litPixels">—</span></div>
+      </div>
+    </div>
+
+    <!-- Playback Controls -->
+    <div class="panel-section">
+      <div class="section-label">Playback</div>
+      <div class="playback-bar" style="gap:6px;flex-wrap:wrap">
+        <button class="btn primary" id="btnRun" title="Run animation (Ctrl+Enter)">▶ RUN</button>
+        <button class="btn" id="btnStep" title="Step one frame">⏭ STEP</button>
+        <button class="btn" id="btnStop" title="Stop">■ STOP</button>
+        <button class="btn" id="btnLoop" title="Toggle loop">↺ LOOP</button>
+        <button class="btn" id="btnClear" title="Clear display">⬛ CLEAR</button>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="timeline-section">
+      <div class="timeline-header">
+        <div class="section-label" style="margin-bottom:0">Timeline</div>
+        <div class="frame-counter">frame <span id="scrubFrame">0</span> / <span id="totalFrames">0</span></div>
+      </div>
+      <div class="timeline-track" id="timelineTrack">
+        <div class="timeline-fill" id="timelineFill" style="width:0%"></div>
+        <input type="range" class="timeline-scrubber" id="timelineScrubber" min="0" max="0" value="0">
+      </div>
+    </div>
+
+    <!-- Quick Emotions -->
+    <div class="panel-section">
+      <div class="section-label">Quick Preview — Emotions</div>
+      <div class="emotion-grid" id="emotionGrid"></div>
+    </div>
+
+    <!-- Pixel Grid Toggle -->
+    <div class="panel-section" style="display:flex;align-items:center;justify-content:space-between">
+      <div class="section-label" style="margin-bottom:0">Display Options</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="btnGrid" title="Toggle pixel grid">⊞ GRID</button>
+        <button class="btn" id="btnInvert" title="Invert display">◑ INVERT</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right Panel: Editor -->
+  <div class="right-panel">
+    <div class="editor-header">
+      <div class="editor-tabs">
+        <button class="editor-tab active" data-tab="anim">animation.js</button>
+        <button class="editor-tab" data-tab="python">python export</button>
+        <button class="editor-tab" data-tab="help">api ref</button>
+      </div>
+      <div class="editor-actions">
+        <button class="btn" id="btnCopyPython" title="Export as MicroPython">⬇ Copy Python</button>
+        <button class="btn primary" id="btnRunEditor" title="Ctrl+Enter">▶ RUN</button>
+      </div>
+    </div>
+
+    <div class="editor-area">
+      <textarea class="code-editor active-tab" id="editor" spellcheck="false"></textarea>
+      <pre class="python-out" id="pythonOut"></pre>
+      <div class="code-editor active-tab" id="helpTab" style="display:none;overflow:auto;font-size:11px;color:var(--text-dim);line-height:1.8"></div>
+    </div>
+
+    <div class="error-panel" id="errorPanel"></div>
+  </div>
+
+</div>
+
+<div class="status-bar">
+  <div><span class="status-dot" id="statusDot"></span><span id="statusMsg" class="status-msg">Ready — write animation code and hit RUN</span></div>
+  <div id="perfInfo" style="color:var(--text-muted)"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// FRAMEBUFFER + OLED SHIM
+// ═══════════════════════════════════════════════════════
+
+const DISP_W = 128, DISP_H = 64;
+// Use separate X/Y scale to maintain exact 128×64 pixel proportion
+// Each logical pixel → 4px wide, 4px tall = 512×256 canvas (true 2:1 ratio)
+const SCALE_X = 4, SCALE_Y = 4;
+const canvas  = document.getElementById('oled-canvas');
+const ctx     = canvas.getContext('2d');
+
+canvas.width  = DISP_W * SCALE_X;  // 512
+canvas.height = DISP_H * SCALE_Y;  // 256
+
+let framebuffer = new Uint8Array(DISP_W * DISP_H);
+let showGrid    = false;
+let invertDisp  = false;
+
+// Recorded frames for timeline
+let recordedFrames = [];
+let isRecording    = false;
+let frameTimings   = []; // sleep_ms accumulator per show()
+
+function fb_clear(col = 0) {
+  framebuffer.fill(col === 1 ? 1 : 0);
+}
+
+function fb_pixel(x, y, col = 1) {
+  x = x | 0; y = y | 0;
+  if (x < 0 || x >= DISP_W || y < 0 || y >= DISP_H) return;
+  framebuffer[y * DISP_W + x] = col ? 1 : 0;
+}
+
+function fb_hline(x, y, w, col = 1) {
+  for (let i = 0; i < w; i++) fb_pixel(x + i, y, col);
+}
+
+function fb_vline(x, y, h, col = 1) {
+  for (let i = 0; i < h; i++) fb_pixel(x, y + i, col);
+}
+
+function fb_rect(x, y, w, h, col = 1) {
+  fb_hline(x, y, w, col);
+  fb_hline(x, y + h - 1, w, col);
+  fb_vline(x, y, h, col);
+  fb_vline(x + w - 1, y, h, col);
+}
+
+function fb_fill_rect(x, y, w, h, col = 1) {
+  for (let row = 0; row < h; row++)
+    for (let col2 = 0; col2 < w; col2++)
+      fb_pixel(x + col2, y + row, col);
+}
+
+function renderToCanvas(fb) {
+  const imgData = ctx.createImageData(canvas.width, canvas.height);
+  const d = imgData.data;
+  const onR = invertDisp ? 0 : 255, onG = invertDisp ? 0 : 255, onB = invertDisp ? 0 : 255;
+  const offR = invertDisp ? 255 : 8, offG = invertDisp ? 255 : 8, offB = invertDisp ? 255 : 16;
+
+  for (let py = 0; py < DISP_H; py++) {
+    for (let px = 0; px < DISP_W; px++) {
+      const lit = fb[py * DISP_W + px];
+      const R = lit ? onR : offR;
+      const G = lit ? onG : offG;
+      const B = lit ? onB : offB;
+      // Fill SCALE_X × SCALE_Y block
+      for (let sy = 0; sy < SCALE_Y; sy++) {
+        for (let sx = 0; sx < SCALE_X; sx++) {
+          const ci = ((py * SCALE_Y + sy) * canvas.width + (px * SCALE_X + sx)) * 4;
+          d[ci]     = R;
+          d[ci + 1] = G;
+          d[ci + 2] = B;
+          d[ci + 3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Pixel grid overlay
+  if (showGrid) {
+    ctx.strokeStyle = 'rgba(0,229,160,0.15)';
+    ctx.lineWidth = 0.5;
+    for (let px = 0; px <= DISP_W; px++) {
+      ctx.beginPath();
+      ctx.moveTo(px * SCALE_X, 0);
+      ctx.lineTo(px * SCALE_X, canvas.height);
+      ctx.stroke();
+    }
+    for (let py = 0; py <= DISP_H; py++) {
+      ctx.beginPath();
+      ctx.moveTo(0, py * SCALE_Y);
+      ctx.lineTo(canvas.width, py * SCALE_Y);
+      ctx.stroke();
+    }
+  }
+
+  // Count lit pixels
+  let lit = 0;
+  for (let i = 0; i < fb.length; i++) if (fb[i]) lit++;
+  document.getElementById('litPixels').textContent = lit;
+}
+
+function renderCurrent() {
+  renderToCanvas(framebuffer);
+}
+
+// ═══════════════════════════════════════════════════════
+// OLED SHIM — same names as your MicroPython
+// ═══════════════════════════════════════════════════════
+
+let simulatedTime = 0; // accumulated ms from sleep_ms calls
+
+const oled = {
+  pixel(x, y, col = 1)           { fb_pixel(x, y, col); },
+  hline(x, y, w, col = 1)        { fb_hline(x, y, w, col); },
+  vline(x, y, h, col = 1)        { fb_vline(x, y, h, col); },
+  rect(x, y, w, h, col = 1)      { fb_rect(x, y, w, h, col); },
+  fill_rect(x, y, w, h, col = 1) { fb_fill_rect(x, y, w, h, col); },
+  fill(col = 0)                   { fb_clear(col); },
+  show() {
+    // Capture frame snapshot
+    if (isRecording) {
+      recordedFrames.push(new Uint8Array(framebuffer));
+      frameTimings.push(simulatedTime);
+    }
+    renderCurrent();
+  }
+};
+
+// sleep_ms — accumulates time, doesn't actually block
+function sleep_ms(ms) {
+  simulatedTime += ms;
+}
+
+// ═══════════════════════════════════════════════════════
+// DRAWING PRIMITIVES (same as your Python)
+// ═══════════════════════════════════════════════════════
+
+function draw_oval(cx, cy, rx, ry, col = 1) {
+  for (let y = -ry; y <= ry; y++) {
+    for (let x = -rx; x <= rx; x++) {
+      if ((x * x * ry * ry + y * y * rx * rx) <= (rx * rx * ry * ry)) {
+        oled.pixel(cx + x, cy + y, col);
+      }
+    }
+  }
+}
+
+function draw_arc(cx, cy, rx, ry, top = true, col = 1) {
+  for (let x = -rx; x <= rx; x++) {
+    const y = Math.round(ry * Math.sqrt(1 - (x / rx) ** 2));
+    if (top) oled.pixel(cx + x, cy - y, col);
+    else     oled.pixel(cx + x, cy + y, col);
+  }
+}
+
+function draw_line(x0, y0, x1, y1, col = 1) {
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  while (true) {
+    oled.pixel(x0, y0, col);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx)  { err += dx; y0 += sy; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// ANIMATION ENGINE
+// ═══════════════════════════════════════════════════════
+
+let animRunning   = false;
+let loopMode      = false;
+let speedMult     = 1.0;
+let currentFrame  = 0;
+let playInterval  = null;
+let userAnimFn    = null;
+
+function getTargetFPS() {
+  return Math.max(1, Math.min(60, parseInt(document.getElementById('fpsInput').value) || 22));
+}
+
+function getFrameInterval() {
+  // ms between frames, adjusted by speed
+  return (1000 / getTargetFPS()) / speedMult;
+}
+
+function setStatus(msg, state = 'idle') {
+  document.getElementById('statusMsg').textContent = msg;
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot';
+  if (state === 'running') dot.classList.add('running');
+  else if (state === 'error') dot.classList.add('error');
+  else if (state === 'ready') dot.classList.add('ready');
+}
+
+function showError(msg) {
+  const ep = document.getElementById('errorPanel');
+  ep.textContent = '⚠ ' + msg;
+  ep.classList.add('visible');
+  setStatus('Error: ' + msg.split('\n')[0], 'error');
+}
+
+function clearError() {
+  document.getElementById('errorPanel').classList.remove('visible');
+}
+
+function updateTimeline() {
+  const total = recordedFrames.length;
+  const scrubber = document.getElementById('timelineScrubber');
+  scrubber.max   = Math.max(0, total - 1);
+  scrubber.value = currentFrame;
+  document.getElementById('totalFrames').textContent = total;
+  document.getElementById('scrubFrame').textContent  = currentFrame;
+
+  const pct = total > 1 ? (currentFrame / (total - 1)) * 100 : 0;
+  document.getElementById('timelineFill').style.width = pct + '%';
+
+  // Frame info
+  document.getElementById('frameNum').textContent  = total > 0 ? (currentFrame + 1) + '/' + total : '—';
+  const t = frameTimings[currentFrame];
+  document.getElementById('frameTime').textContent = t !== undefined ? t + 'ms' : '—';
+}
+
+function compileAndRecord() {
+  clearError();
+  const code = document.getElementById('editor').value;
+
+  // Reset recording state
+  recordedFrames = [];
+  frameTimings   = [];
+  simulatedTime  = 0;
+  isRecording    = true;
+
+  try {
+    const fn = new Function(
+      'oled', 'draw_oval', 'draw_arc', 'draw_line', 'sleep_ms', 'W', 'H',
+      // Wrap user code in a block scope so top-level const/let don't collide
+      '{ ' + code + ' }\n return typeof run_animation === "function" ? run_animation : null;'
+    );
+    userAnimFn = fn(
+      oled, draw_oval, draw_arc, draw_line, sleep_ms,
+      DISP_W, DISP_H
+    );
+    isRecording = false;
+  } catch (e) {
+    isRecording = false;
+    showError(e.message);
+    return false;
+  }
+
+  if (!userAnimFn) {
+    showError('No `run_animation` function found. Define: function run_animation() { ... }');
+    return false;
+  }
+
+  // Execute it synchronously to collect all frames
+  isRecording = true;
+  simulatedTime = 0;
+  try {
+    userAnimFn();
+  } catch (e) {
+    isRecording = false;
+    showError('Runtime error: ' + e.message);
+    return false;
+  }
+  isRecording = false;
+
+  if (recordedFrames.length === 0) {
+    showError('No frames captured. Make sure you call oled.show() inside run_animation().');
+    return false;
+  }
+
+  return true;
+}
+
+function startPlayback() {
+  if (animRunning) stopPlayback();
+  if (!compileAndRecord()) return;
+
+  currentFrame = 0;
+  updateTimeline();
+  animRunning = true;
+  setStatus(`Playing ${recordedFrames.length} frames @ ${getTargetFPS()} FPS`, 'running');
+  document.getElementById('loopBadge').classList.toggle('visible', loopMode);
+
+  playInterval = setInterval(() => {
+    if (currentFrame >= recordedFrames.length) {
+      if (loopMode) {
+        currentFrame = 0;
+      } else {
+        stopPlayback();
+        setStatus(`Done — ${recordedFrames.length} frames`, 'ready');
+        return;
+      }
+    }
+    renderToCanvas(recordedFrames[currentFrame]);
+    updateTimeline();
+    currentFrame++;
+  }, getFrameInterval());
+}
+
+function stopPlayback() {
+  animRunning = false;
+  clearInterval(playInterval);
+  playInterval = null;
+  document.getElementById('loopBadge').classList.remove('visible');
+  setStatus('Stopped');
+}
+
+function stepFrame() {
+  if (recordedFrames.length === 0) {
+    if (!compileAndRecord()) return;
+    currentFrame = 0;
+  }
+  if (currentFrame >= recordedFrames.length) currentFrame = 0;
+  renderToCanvas(recordedFrames[currentFrame]);
+  updateTimeline();
+  currentFrame++;
+}
+
+// ═══════════════════════════════════════════════════════
+// PYTHON EXPORT
+// ═══════════════════════════════════════════════════════
+
+function generatePython() {
+  const code = document.getElementById('editor').value;
+  const fps  = getTargetFPS();
+  const delay = Math.round(1000 / fps);
+
+  const header = `# ── Generated by OLED Animator ──────────────────────────
+# Target FPS: ${fps}  |  frame interval: ${delay}ms
+# Paste below your imports + oled/primitive setup
+# ─────────────────────────────────────────────────────────
+
+`;
+
+  // Rewrite JS -> Python style (best-effort mechanical subs)
+  let py = code
+    .replace(/function\s+(\w+)\s*\(/g, 'def $1(')
+    .replace(/\)\s*\{/g, '):')
+    .replace(/^\s*\}\s*$/gm, '')
+    .replace(/const\s+/g, '')
+    .replace(/let\s+/g, '')
+    .replace(/var\s+/g, '')
+    .replace(/===|==/g, '==')
+    .replace(/!==|!=/g, '!=')
+    .replace(/true/g, 'True')
+    .replace(/false/g, 'False')
+    .replace(/null/g, 'None')
+    .replace(/\/\//g, '#')
+    .replace(/Math\.round\(/g, 'round(')
+    .replace(/Math\.sqrt\(/g, '(lambda _x: _x**0.5)(')
+    .replace(/Math\.abs\(/g, 'abs(')
+    .replace(/\*\*/g, '**')
+    .replace(/\+\+/g, ' += 1  #')
+    .replace(/--/g, ' -= 1  #')
+    .replace(/for\s*\(let\s+(\w+)\s*=\s*(.+?);\s*\1\s*<\s*(.+?);\s*\1\+\+\)/g,
+             'for $1 in range(int($2), int($3)):')
+    .replace(/for\s*\(let\s+(\w+)\s*=\s*(.+?);\s*\1\s*<=\s*(.+?);\s*\1\+\+\)/g,
+             'for $1 in range(int($2), int($3) + 1):')
+    .trim();
+
+  return header + py + `\n\n# ── Run loop ─────────────────────────────────────────────
+# Call run_animation() in your main loop:
+# while True:
+#     run_animation()
+#     time.sleep_ms(${delay})
+`;
+}
+
+// ═══════════════════════════════════════════════════════
+// DEFAULT ANIMATION CODE
+// ═══════════════════════════════════════════════════════
+
+const DEFAULT_CODE = `// ── OLED Animator ──────────────────────────────────────
+// Available globals (same names as MicroPython):
+//   oled.pixel(x, y, col)       oled.hline(x, y, w, col)
+//   oled.vline(x, y, h, col)    oled.fill_rect(x, y, w, h, col)
+//   oled.fill(col)              oled.show()   ← captures a frame
+//   draw_oval(cx, cy, rx, ry)   draw_arc(cx, cy, rx, ry, top)
+//   draw_line(x0, y0, x1, y1)  sleep_ms(ms)  ← sets frame timestamp
+//   W=128, H=64, EYE_Y=22
+//
+// Define function run_animation() — called once to record all frames.
+// ─────────────────────────────────────────────────────────────────────
+
+const EYE_Y = 22;
+const LX = 36, RX = 92;   // left/right eye X centres
+const MY = 52;              // mouth Y
+
+// ── Eye shapes ────────────────────────────────────────
+
+function eyes_normal() {
+    draw_oval(LX, EYE_Y, 10, 16);
+    draw_oval(RX, EYE_Y, 10, 16);
+    draw_oval(LX, EYE_Y, 3, 4, 0);  // pupils
+    draw_oval(RX, EYE_Y, 3, 4, 0);
+    draw_oval(LX, EYE_Y, 3, 4);
+    draw_oval(RX, EYE_Y, 3, 4);
+}
+
+function eyes_happy() {
+    for (let x = -10; x <= 10; x++) {
+        const y = Math.round(8 * Math.sqrt(1 - (x / 10) ** 2));
+        oled.pixel(LX + x, EYE_Y + y, 1);
+        oled.pixel(RX + x, EYE_Y + y, 1);
+    }
+    oled.hline(LX - 10, EYE_Y, 21, 1);
+    oled.hline(RX - 10, EYE_Y, 21, 1);
+}
+
+function eyes_sad() {
+    draw_oval(LX, EYE_Y + 4, 10, 13);
+    draw_oval(RX, EYE_Y + 4, 10, 13);
+    draw_oval(LX, EYE_Y + 4, 3, 4);
+    draw_oval(RX, EYE_Y + 4, 3, 4);
+    draw_line(LX - 10, EYE_Y - 12, LX + 4, EYE_Y - 8);
+    draw_line(RX - 4,  EYE_Y - 8,  RX + 10, EYE_Y - 12);
+}
+
+function eyes_surprised() {
+    draw_oval(LX, EYE_Y, 13, 13);
+    draw_oval(RX, EYE_Y, 13, 13);
+    draw_oval(LX, EYE_Y, 4, 4);
+    draw_oval(RX, EYE_Y, 4, 4);
+}
+
+function eyes_angry() {
+    draw_oval(LX, EYE_Y, 10, 14);
+    draw_oval(RX, EYE_Y, 10, 14);
+    draw_oval(LX, EYE_Y, 3, 4);
+    draw_oval(RX, EYE_Y, 3, 4);
+    draw_line(LX - 10, EYE_Y - 10, LX + 6, EYE_Y - 16);
+    draw_line(RX - 6,  EYE_Y - 16, RX + 10, EYE_Y - 10);
+}
+
+// ── Mouth shapes ──────────────────────────────────────
+
+function mouth_normal() { oled.hline(48, MY, 32, 1); }
+
+function mouth_happy()  { draw_arc(64, MY - 4, 18, 10, false); }
+
+function mouth_sad()    { draw_arc(64, MY + 8, 18, 10, true); }
+
+function mouth_surprised() { draw_oval(64, MY, 7, 9); }
+
+function mouth_angry() {
+    oled.hline(48, MY, 32, 1);
+    draw_line(48, MY, 44, MY + 4);
+    draw_line(80, MY, 84, MY + 4);
+}
+
+// ── Blink transition ──────────────────────────────────
+
+function blink_transition(steps = 6) {
+    for (let i = 0; i < steps; i++) {
+        oled.fill(0);
+        const ry = Math.max(1, 16 - (i * 3));
+        draw_oval(LX, EYE_Y, 10, ry);
+        draw_oval(RX, EYE_Y, 10, ry);
+        sleep_ms(30);
+        oled.show();
+    }
+}
+
+function blink_open(steps = 6) {
+    for (let i = 0; i < steps; i++) {
+        oled.fill(0);
+        const ry = Math.min(16, 1 + (i * 3));
+        draw_oval(LX, EYE_Y, 10, ry);
+        draw_oval(RX, EYE_Y, 10, ry);
+        sleep_ms(30);
+        oled.show();
+    }
+}
+
+// ── Full sequence to test ─────────────────────────────
+
+const SEQUENCE = [
+    [eyes_normal,    mouth_normal],
+    [eyes_happy,     mouth_happy],
+    [eyes_sad,       mouth_sad],
+    [eyes_surprised, mouth_surprised],
+    [eyes_angry,     mouth_angry],
+];
+
+function draw_emotion(eyeFn, mouthFn) {
+    oled.fill(0);
+    eyeFn();
+    mouthFn();
+    oled.show();
+}
+
+function run_animation() {
+    for (let i = 0; i < SEQUENCE.length; i++) {
+        const [eyeFn, mouthFn] = SEQUENCE[i];
+
+        // Hold for ~1s worth of frames
+        for (let hold = 0; hold < 22; hold++) {
+            oled.fill(0);
+            eyeFn();
+            mouthFn();
+            sleep_ms(45);
+            oled.show();
+        }
+
+        // Blink out
+        blink_transition();
+
+        // Blink into next
+        const next = SEQUENCE[(i + 1) % SEQUENCE.length];
+        oled.fill(0);
+        next[0](); next[1]();
+
+        blink_open();
+
+        draw_emotion(next[0], next[1]);
+    }
+}
+`;
+
+// ═══════════════════════════════════════════════════════
+// UI EVENT WIRING
+// ═══════════════════════════════════════════════════════
+
+const EMOTIONS = ['normal','happy','sad','surprised','angry','sleepy','curious','awkward'];
+
+function buildEmotionGrid() {
+  const grid = document.getElementById('emotionGrid');
+  EMOTIONS.forEach(em => {
+    const b = document.createElement('button');
+    b.className = 'emotion-btn';
+    b.textContent = em;
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.emotion-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      previewEmotion(em);
+    });
+    grid.appendChild(b);
+  });
+}
+
+function previewEmotion(name) {
+  // Run just the single emotion from the editor's defined functions
+  clearError();
+  const code = document.getElementById('editor').value;
+  recordedFrames = []; frameTimings = []; simulatedTime = 0; isRecording = true;
+  try {
+    const fn = new Function(
+      'oled','draw_oval','draw_arc','draw_line','sleep_ms','W','H',
+      '{ ' + code + `
+      oled.fill(0);
+      if(typeof eyes_${name}==="function") eyes_${name}();
+      if(typeof mouth_${name}==="function") mouth_${name}();
+      oled.show(); } return null;`
+    );
+    fn(oled,draw_oval,draw_arc,draw_line,sleep_ms,DISP_W,DISP_H);
+    isRecording = false;
+    if (recordedFrames.length) {
+      renderToCanvas(recordedFrames[0]);
+      currentFrame = 0;
+      updateTimeline();
+      setStatus(`Preview: ${name}`, 'ready');
+    }
+  } catch(e) {
+    isRecording = false;
+    showError(e.message);
+  }
+}
+
+// Run buttons
+document.getElementById('btnRun').addEventListener('click', startPlayback);
+document.getElementById('btnRunEditor').addEventListener('click', startPlayback);
+document.getElementById('btnStop').addEventListener('click', () => {
+  stopPlayback();
+});
+document.getElementById('btnStep').addEventListener('click', stepFrame);
+document.getElementById('btnClear').addEventListener('click', () => {
+  stopPlayback();
+  oled.fill(0);
+  renderCurrent();
+  recordedFrames = []; frameTimings = [];
+  updateTimeline();
+  setStatus('Display cleared');
+});
+
+document.getElementById('btnLoop').addEventListener('click', function() {
+  loopMode = !loopMode;
+  this.classList.toggle('active', loopMode);
+  document.getElementById('loopBadge').classList.toggle('visible', loopMode && animRunning);
+});
+
+// Grid & invert
+document.getElementById('btnGrid').addEventListener('click', function() {
+  showGrid = !showGrid;
+  this.classList.toggle('active', showGrid);
+  renderCurrent();
+});
+document.getElementById('btnInvert').addEventListener('click', function() {
+  invertDisp = !invertDisp;
+  this.classList.toggle('active', invertDisp);
+  renderCurrent();
+});
+
+// Speed buttons
+document.querySelectorAll('.speed-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    speedMult = parseFloat(this.dataset.speed);
+    document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    // Restart if running
+    if (animRunning) {
+      clearInterval(playInterval);
+      playInterval = setInterval(() => {
+        if (currentFrame >= recordedFrames.length) {
+          if (loopMode) currentFrame = 0;
+          else { stopPlayback(); setStatus(`Done — ${recordedFrames.length} frames`, 'ready'); return; }
+        }
+        renderToCanvas(recordedFrames[currentFrame]);
+        updateTimeline();
+        currentFrame++;
+      }, getFrameInterval());
+    }
+  });
+});
+
+// FPS input — restart if running
+document.getElementById('fpsInput').addEventListener('change', () => {
+  if (animRunning) {
+    clearInterval(playInterval);
+    playInterval = setInterval(() => {
+      if (currentFrame >= recordedFrames.length) {
+        if (loopMode) currentFrame = 0;
+        else { stopPlayback(); return; }
+      }
+      renderToCanvas(recordedFrames[currentFrame]);
+      updateTimeline();
+      currentFrame++;
+    }, getFrameInterval());
+    setStatus(`Playing @ ${getTargetFPS()} FPS`, 'running');
+  }
+});
+
+// Timeline scrubber
+document.getElementById('timelineScrubber').addEventListener('input', function() {
+  stopPlayback();
+  currentFrame = parseInt(this.value);
+  if (recordedFrames[currentFrame]) {
+    renderToCanvas(recordedFrames[currentFrame]);
+    updateTimeline();
+    document.getElementById('frameNum').textContent = (currentFrame + 1) + '/' + recordedFrames.length;
+  }
+});
+
+// Tab switching
+document.querySelectorAll('.editor-tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    const which = this.dataset.tab;
+    document.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
+    this.classList.add('active');
+
+    document.getElementById('editor').classList.remove('active-tab');
+    document.getElementById('pythonOut').classList.remove('active-tab');
+    document.getElementById('helpTab').classList.remove('active-tab');
+    document.getElementById('editor').style.display = 'none';
+    document.getElementById('pythonOut').style.display = 'none';
+    document.getElementById('helpTab').style.display = 'none';
+
+    if (which === 'anim') {
+      document.getElementById('editor').style.display = 'block';
+    } else if (which === 'python') {
+      const py = generatePython();
+      document.getElementById('pythonOut').textContent = py;
+      document.getElementById('pythonOut').style.display = 'block';
+    } else if (which === 'help') {
+      document.getElementById('helpTab').style.display = 'block';
+    }
+  });
+});
+
+// Copy Python
+document.getElementById('btnCopyPython').addEventListener('click', () => {
+  const py = generatePython();
+  navigator.clipboard.writeText(py).then(() => {
+    setStatus('Python copied to clipboard!', 'ready');
+  }).catch(() => {
+    document.getElementById('pythonOut').textContent = py;
+    setStatus('Python generated (see export tab)', 'ready');
+  });
+});
+
+// Ctrl+Enter to run
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    startPlayback();
+  }
+});
+
+// Tab key inside editor
+document.getElementById('editor').addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = e.target.selectionStart, end = e.target.selectionEnd;
+    e.target.value = e.target.value.substring(0, s) + '    ' + e.target.value.substring(end);
+    e.target.selectionStart = e.target.selectionEnd = s + 4;
+  }
+});
+
+// ── Help tab content
+document.getElementById('helpTab').innerHTML = `<div style="color:var(--text);font-family:var(--font-mono);font-size:11px;line-height:1.9">
+<div style="color:var(--accent);font-weight:700;font-size:13px;margin-bottom:12px">OLED Animator — API Reference</div>
+
+<div style="color:var(--warn);margin-bottom:4px">REQUIRED ENTRY POINT</div>
+<code style="color:var(--accent)">function run_animation() { ... }</code>
+<div style="color:var(--text-muted);margin:4px 0 14px 0">Define this function. It's called once to record all frames.</div>
+
+<div style="color:var(--warn);margin-bottom:4px">OLED PRIMITIVES (identical to MicroPython)</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;margin-bottom:14px">
+  <div><span style="color:#79c0ff">oled</span>.pixel(x, y, col)</div>        <div style="color:var(--text-muted)">set pixel</div>
+  <div><span style="color:#79c0ff">oled</span>.hline(x, y, w, col)</div>     <div style="color:var(--text-muted)">horizontal line</div>
+  <div><span style="color:#79c0ff">oled</span>.vline(x, y, h, col)</div>     <div style="color:var(--text-muted)">vertical line</div>
+  <div><span style="color:#79c0ff">oled</span>.fill_rect(x, y, w, h, col)</div> <div style="color:var(--text-muted)">filled rectangle</div>
+  <div><span style="color:#79c0ff">oled</span>.rect(x, y, w, h, col)</div>   <div style="color:var(--text-muted)">outline rectangle</div>
+  <div><span style="color:#79c0ff">oled</span>.fill(col)</div>               <div style="color:var(--text-muted)">fill screen (0=black)</div>
+  <div><span style="color:#79c0ff">oled</span>.show()</div>                  <div style="color:var(--accent);font-weight:700">⟵ captures frame!</div>
+</div>
+
+<div style="color:var(--warn);margin-bottom:4px">DRAWING HELPERS</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;margin-bottom:14px">
+  <div><span style="color:#d2a8ff">draw_oval</span>(cx, cy, rx, ry, col)</div>       <div style="color:var(--text-muted)">filled ellipse</div>
+  <div><span style="color:#d2a8ff">draw_arc</span>(cx, cy, rx, ry, top, col)</div>   <div style="color:var(--text-muted)">half ellipse arc</div>
+  <div><span style="color:#d2a8ff">draw_line</span>(x0, y0, x1, y1, col)</div>       <div style="color:var(--text-muted)">Bresenham line</div>
+</div>
+
+<div style="color:var(--warn);margin-bottom:4px">TIMING</div>
+<div style="margin-bottom:14px">
+  <div><span style="color:#d2a8ff">sleep_ms</span>(ms)  <span style="color:var(--text-muted)">→ adds ms to frame timestamp (doesn't block)</span></div>
+</div>
+
+<div style="color:var(--warn);margin-bottom:4px">CONSTANTS</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;margin-bottom:14px">
+  <div>W = 128</div>   <div style="color:var(--text-muted)">display width</div>
+  <div>H = 64</div>    <div style="color:var(--text-muted)">display height</div>
+  <div>EYE_Y = 22</div><div style="color:var(--text-muted)">eye centre Y</div>
+</div>
+
+<div style="color:var(--warn);margin-bottom:4px">KEYBOARD SHORTCUTS</div>
+<div>Ctrl+Enter → Run animation</div>
+<div>Tab → indent 4 spaces in editor</div>
+</div>`;
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+
+buildEmotionGrid();
+document.getElementById('editor').value = DEFAULT_CODE;
+document.getElementById('editor').style.display = 'block';
+
+// Initial render — show blank screen with greeting
+oled.fill(0);
+// Draw something welcoming on the blank OLED
+const msg = "OLED ANIMATOR";
+oled.hline(0, 20, 128, 1);
+oled.hline(0, 44, 128, 1);
+draw_oval(64, 32, 30, 8, 1);
+draw_oval(64, 32, 28, 6, 0);
+oled.show();
+renderCurrent();
+
+setStatus('Ready — press ▶ RUN or Ctrl+Enter to start', 'ready');
+updateTimeline();
+</script>
+</body>
+</html>
