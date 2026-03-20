@@ -21,6 +21,8 @@ Usage:
     oled.show()
 """
 
+import time
+
 # ---------------------------------------------------------------------------
 # Display / layout configuration — change here when swapping hardware
 # ---------------------------------------------------------------------------
@@ -160,6 +162,33 @@ EXPR_ANNOYED    = 'annoyed'
 
 
 # ---------------------------------------------------------------------------
+# Interpolation helpers (used for transitions)
+# ---------------------------------------------------------------------------
+
+def _lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def _ease(t):
+    """Smoothstep S-curve: starts and ends gently."""
+    return t * t * (3 - 2 * t)
+
+
+def lerp_eye_config(a, b, t):
+    """Return an EyeConfig linearly interpolated between a and b at fraction t."""
+    return EyeConfig(
+        width         = _lerp(a.width,         b.width,         t),
+        height        = _lerp(a.height,        b.height,        t),
+        offset_x      = _lerp(a.offset_x,      b.offset_x,      t),
+        offset_y      = _lerp(a.offset_y,      b.offset_y,      t),
+        slope_top     = _lerp(a.slope_top,     b.slope_top,     t),
+        slope_bottom  = _lerp(a.slope_bottom,  b.slope_bottom,  t),
+        radius_top    = _lerp(a.radius_top,    b.radius_top,    t),
+        radius_bottom = _lerp(a.radius_bottom, b.radius_bottom, t),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Low-level drawing helpers
 # ---------------------------------------------------------------------------
 
@@ -274,14 +303,15 @@ def draw_eye(oled, center_x, center_y, cfg):
     center_x, center_y — pixel centre of this eye on the display
     cfg                — EyeConfig describing this eye's shape
     """
-    w   = cfg.width
-    h   = cfg.height
-    ox  = cfg.offset_x
-    oy  = cfg.offset_y
-    st  = cfg.slope_top
+    # Cast to int — configs may hold floats during transitions
+    w   = int(cfg.width)
+    h   = int(cfg.height)
+    ox  = int(cfg.offset_x)
+    oy  = int(cfg.offset_y)
+    st  = cfg.slope_top        # kept as float: used in multiply only
     sb  = cfg.slope_bottom
-    rt  = cfg.radius_top
-    rb  = cfg.radius_bottom
+    rt  = int(cfg.radius_top)
+    rb  = int(cfg.radius_bottom)
 
     # --- slope deltas (vertical shift at the edge of the eye) ---
     dyt = int(h * st / 2)   # + means right side of top edge is lower
@@ -372,7 +402,7 @@ class Eyes:
         oled.show()
     """
 
-    def __init__(self, oled, eye_size=None, display_config=None):
+    def __init__(self, oled, eye_size=None, display_config=None, transition_ms=300):
         self.oled = oled
 
         # Allow overriding display config at runtime
@@ -388,42 +418,102 @@ class Eyes:
         self._right_cx = self._dc.WIDTH // 2 + self.eye_size // 2 + self._dc.EYE_GAP
         self._eye_cy   = self._dc.EYE_Y
 
-        # Load expression presets
+        # Expression registry (presets + any user-registered expressions)
         self._presets = _presets(self.eye_size)
         self._current_expression = EXPR_NORMAL
+        self._default_trans_ms = transition_ms
 
-        # Current eye configs (may differ per eye)
+        # Transition state
         right_cfg, left_cfg = self._presets[EXPR_NORMAL]
-        self._right_cfg = right_cfg
-        self._left_cfg  = left_cfg if left_cfg is not None else right_cfg.mirror()
+        left_cfg = left_cfg if left_cfg is not None else right_cfg.mirror()
+        self._from_right     = right_cfg   # config we're transitioning FROM
+        self._from_left      = left_cfg
+        self._to_right       = right_cfg   # config we're transitioning TO
+        self._to_left        = left_cfg
+        self._trans_start_ms = None        # None = not transitioning
+        self._trans_dur_ms   = transition_ms
 
     # ------------------------------------------------------------------
-    def set_expression(self, name):
+    def register_expression(self, name, right_cfg, left_cfg=None):
         """
-        Switch to a named expression immediately.
+        Add (or overwrite) a custom expression preset.
 
-        name — one of the EXPR_* constants or a string key
+        right_cfg — EyeConfig for the right eye
+        left_cfg  — EyeConfig for the left eye, or None to auto-mirror right_cfg
+
+        Example
+        -------
+            from eyes import EyeConfig
+            wink = EyeConfig(width=40, height=2, radius_top=1, radius_bottom=1)
+            eyes.register_expression('wink', right_cfg=wink)
+        """
+        self._presets[name] = (right_cfg, left_cfg)
+
+    # ------------------------------------------------------------------
+    def set_expression(self, name, duration_ms=None):
+        """
+        Transition to a named expression.
+
+        name        — one of the EXPR_* constants, a string key, or any name
+                      previously passed to register_expression()
+        duration_ms — transition duration in milliseconds; omit to use the
+                      default set at construction time (default 300 ms).
+                      Pass 0 for an instant switch.
         """
         if name not in self._presets:
             raise ValueError("Unknown expression: {}".format(name))
-        self._current_expression = name
+
+        dur = duration_ms if duration_ms is not None else self._default_trans_ms
+
+        # Snapshot the current mid-transition position as the new start
+        t = _ease(self._trans_t())
+        self._from_right = lerp_eye_config(self._from_right, self._to_right, t)
+        self._from_left  = lerp_eye_config(self._from_left,  self._to_left,  t)
+
+        # Set target
         right_cfg, left_cfg = self._presets[name]
-        self._right_cfg = right_cfg
-        self._left_cfg  = left_cfg if left_cfg is not None else right_cfg.mirror()
+        self._to_right = right_cfg
+        self._to_left  = left_cfg if left_cfg is not None else right_cfg.mirror()
+
+        self._trans_start_ms  = time.ticks_ms()
+        self._trans_dur_ms    = dur
+        self._current_expression = name
+
+    # ------------------------------------------------------------------
+    def is_transitioning(self):
+        """Return True while a transition is still in progress."""
+        return self._trans_t() < 1.0
 
     # ------------------------------------------------------------------
     def draw(self, clear=True):
         """
-        Render both eyes to the framebuffer.
+        Render both eyes to the framebuffer at the current transition position.
 
         Calls oled.fill(0) first to clear unless clear=False.
         Does NOT call oled.show() — call that yourself after draw().
+        Call this every frame in your main loop.
         """
+        t     = _ease(self._trans_t())
+        right = lerp_eye_config(self._from_right, self._to_right, t)
+        left  = lerp_eye_config(self._from_left,  self._to_left,  t)
+
         if clear:
             self.oled.fill(0)
-        draw_eye(self.oled, self._right_cx, self._eye_cy, self._right_cfg)
-        draw_eye(self.oled, self._left_cx,  self._eye_cy, self._left_cfg)
+        draw_eye(self.oled, self._right_cx, self._eye_cy, right)
+        draw_eye(self.oled, self._left_cx,  self._eye_cy, left)
 
     # ------------------------------------------------------------------
     def available_expressions(self):
+        """Return a list of all registered expression names."""
         return list(self._presets.keys())
+
+    # ------------------------------------------------------------------
+    def _trans_t(self):
+        """Raw linear transition progress in [0, 1]."""
+        if self._trans_start_ms is None:
+            return 1.0
+        if self._trans_dur_ms <= 0:
+            return 1.0
+        elapsed = time.ticks_diff(time.ticks_ms(), self._trans_start_ms)
+        t = elapsed / self._trans_dur_ms
+        return min(1.0, max(0.0, t))
