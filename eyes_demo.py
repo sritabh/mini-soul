@@ -1,8 +1,10 @@
 """
-eyes_demo.py — Cycles through all 24 expressions with smooth transitions.
+eyes_demo.py — Cycles through all 24 expressions with smooth transitions and blinking.
 
-Flash eyes.py + eyes_demo.py to the ESP32. The demo rotates through every
-emotion every 2 seconds, morphing smoothly between them.
+Auto-blink fires every 3.5 s automatically. A forced mid-hold blink also
+triggers once per expression so you can see it working at every emotion.
+
+Flash eyes.py + eyes_demo.py to the ESP32.
 """
 
 from machine import SoftI2C, Pin
@@ -32,8 +34,9 @@ from eyes import (
 i2c  = SoftI2C(sda=Pin(8), scl=Pin(9))
 oled = SSD1306_I2C(128, 64, i2c)
 
-# transition_ms controls morph duration between expressions
-eyes = Eyes(oled, transition_ms=400)
+# auto_blink=True fires a blink every blink_interval_ms automatically.
+# transition_ms controls morph duration between expressions.
+eyes = Eyes(oled, transition_ms=400, auto_blink=True, blink_interval_ms=3500)
 
 # Ordered sequence matching the image layout
 SEQUENCE = [
@@ -70,25 +73,35 @@ SEQUENCE = [
     (EXPR_ASLEEP,       "Asleep"),
 ]
 
-HOLD_MS = 2000   # hold each expression this long before switching
+HOLD_MS       = 2500   # hold each expression this long before switching
+MID_BLINK_MS  = 1200   # trigger a forced blink this many ms into each hold
 
 # Kick off the first expression
 idx = 0
 expr, label = SEQUENCE[idx]
 print("Expression:", label)
 eyes.set_expression(expr)
-last_switch_ms = time.ticks_ms()
+last_switch_ms  = time.ticks_ms()
+mid_blinked     = False   # have we done the mid-hold blink for this expression?
 
 # --- Main loop: render every frame; switch expression on a timer ---
 while True:
     now = time.ticks_ms()
+    elapsed = time.ticks_diff(now, last_switch_ms)
 
-    if time.ticks_diff(now, last_switch_ms) >= HOLD_MS:
+    # Mid-hold forced blink (once per expression, after the transition settles)
+    if not mid_blinked and elapsed >= MID_BLINK_MS:
+        eyes.blink()
+        mid_blinked = True
+
+    # Switch to the next expression after HOLD_MS
+    if elapsed >= HOLD_MS:
         idx = (idx + 1) % len(SEQUENCE)
         expr, label = SEQUENCE[idx]
         print("Expression:", label)
         eyes.set_expression(expr)
         last_switch_ms = now
+        mid_blinked    = False
 
     eyes.draw()
     oled.show()

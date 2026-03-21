@@ -305,6 +305,36 @@ def lerp_eye_config(a, b, t):
     )
 
 
+# Blink animation timing (ms) — matches the C++ TrapeziumAnimation(40, 100, 40)
+_BLINK_CLOSE_MS = 40
+_BLINK_HOLD_MS  = 100
+_BLINK_OPEN_MS  = 40
+_BLINK_TOTAL_MS = _BLINK_CLOSE_MS + _BLINK_HOLD_MS + _BLINK_OPEN_MS  # 180 ms
+
+
+def _apply_blink(cfg, t, blink_width, blink_height):
+    """
+    Squish an EyeConfig toward the closed-eye shape.
+
+    t=0 → eye fully open (cfg unchanged)
+    t=1 → eye fully closed (height=blink_height, width=blink_width, slopes/radii=0)
+
+    t² is applied (same as C++ EyeBlink::Update) so closing snaps quickly
+    and opening eases in gently.
+    """
+    t2 = t * t
+    return EyeConfig(
+        width         = _lerp(cfg.width,         blink_width,  t2),
+        height        = _lerp(cfg.height,        blink_height, t2),
+        offset_x      = cfg.offset_x,
+        offset_y      = cfg.offset_y,
+        slope_top     = cfg.slope_top    * (1.0 - t2),
+        slope_bottom  = cfg.slope_bottom * (1.0 - t2),
+        radius_top    = cfg.radius_top   * (1.0 - t2),
+        radius_bottom = cfg.radius_bottom * (1.0 - t2),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Low-level drawing helpers
 # ---------------------------------------------------------------------------
@@ -519,7 +549,8 @@ class Eyes:
         oled.show()
     """
 
-    def __init__(self, oled, eye_size=None, display_config=None, transition_ms=300):
+    def __init__(self, oled, eye_size=None, display_config=None,
+                 transition_ms=300, auto_blink=True, blink_interval_ms=3500):
         self.oled = oled
 
         # Allow overriding display config at runtime
@@ -543,12 +574,21 @@ class Eyes:
         # Transition state
         right_cfg, left_cfg = self._presets[EXPR_NORMAL]
         left_cfg = left_cfg if left_cfg is not None else right_cfg.mirror()
-        self._from_right     = right_cfg   # config we're transitioning FROM
+        self._from_right     = right_cfg
         self._from_left      = left_cfg
-        self._to_right       = right_cfg   # config we're transitioning TO
+        self._to_right       = right_cfg
         self._to_left        = left_cfg
-        self._trans_start_ms = None        # None = not transitioning
+        self._trans_start_ms = None
         self._trans_dur_ms   = transition_ms
+
+        # Blink state
+        self.auto_blink        = auto_blink
+        self.blink_interval_ms = blink_interval_ms
+        # Closed-eye dimensions (scaled to this eye_size)
+        self.blink_height      = 2
+        self.blink_width       = int(60 * self.eye_size / 40)
+        self._blink_start_ms   = None          # None = not blinking
+        self._last_blink_ms    = time.ticks_ms()
 
     # ------------------------------------------------------------------
     def register_expression(self, name, right_cfg, left_cfg=None):
@@ -597,6 +637,17 @@ class Eyes:
         self._current_expression = name
 
     # ------------------------------------------------------------------
+    def blink(self):
+        """Trigger a single blink immediately."""
+        self._blink_start_ms = time.ticks_ms()
+        self._last_blink_ms  = self._blink_start_ms
+
+    # ------------------------------------------------------------------
+    def is_blinking(self):
+        """Return True while a blink animation is in progress."""
+        return self._blink_start_ms is not None
+
+    # ------------------------------------------------------------------
     def is_transitioning(self):
         """Return True while a transition is still in progress."""
         return self._trans_t() < 1.0
@@ -604,15 +655,28 @@ class Eyes:
     # ------------------------------------------------------------------
     def draw(self, clear=True):
         """
-        Render both eyes to the framebuffer at the current transition position.
+        Render both eyes to the framebuffer at the current animation state.
 
+        Applies (in order): expression transition → blink squish.
         Calls oled.fill(0) first to clear unless clear=False.
         Does NOT call oled.show() — call that yourself after draw().
         Call this every frame in your main loop.
         """
+        # --- auto-blink timer ---
+        if self.auto_blink and not self.is_blinking():
+            if time.ticks_diff(time.ticks_ms(), self._last_blink_ms) >= self.blink_interval_ms:
+                self.blink()
+
+        # --- expression transition ---
         t     = _ease(self._trans_t())
         right = lerp_eye_config(self._from_right, self._to_right, t)
         left  = lerp_eye_config(self._from_left,  self._to_left,  t)
+
+        # --- blink squish (applied on top of whatever expression is showing) ---
+        bt = self._blink_raw_t()
+        if bt > 0.0:
+            right = _apply_blink(right, bt, self.blink_width, self.blink_height)
+            left  = _apply_blink(left,  bt, self.blink_width, self.blink_height)
 
         if clear:
             self.oled.fill(0)
@@ -634,3 +698,18 @@ class Eyes:
         elapsed = time.ticks_diff(time.ticks_ms(), self._trans_start_ms)
         t = elapsed / self._trans_dur_ms
         return min(1.0, max(0.0, t))
+
+    # ------------------------------------------------------------------
+    def _blink_raw_t(self):
+        """Trapezoid blink progress: 0=open, ramps to 1=shut, ramps back to 0=open."""
+        if self._blink_start_ms is None:
+            return 0.0
+        elapsed = time.ticks_diff(time.ticks_ms(), self._blink_start_ms)
+        if elapsed >= _BLINK_TOTAL_MS:
+            self._blink_start_ms = None   # blink finished
+            return 0.0
+        if elapsed < _BLINK_CLOSE_MS:
+            return elapsed / _BLINK_CLOSE_MS
+        if elapsed < _BLINK_CLOSE_MS + _BLINK_HOLD_MS:
+            return 1.0
+        return 1.0 - (elapsed - _BLINK_CLOSE_MS - _BLINK_HOLD_MS) / _BLINK_OPEN_MS
