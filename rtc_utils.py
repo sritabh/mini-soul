@@ -37,6 +37,28 @@ def init_rtc(force_set=False, new_time=None):
         mark_time_set()
 
 
+_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+           'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+_DAYS   = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+
+
+def _day_of_week(y, m, d):
+    t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+    if m < 3:
+        y -= 1
+    return (y + y // 4 - y // 100 + y // 400 + t[m - 1] + d) % 7
+
+
+def get_time_raw():
+    """Return (yy, mo, dd, hh, mm, ss, dow, mon, hh12, period)."""
+    yy, mo, dd, hh, mm, ss = rtc.datetime()
+    period = "AM" if hh < 12 else "PM"
+    hh12   = hh % 12 or 12
+    dow    = _DAYS[_day_of_week(yy, mo, dd)]
+    mon    = _MONTHS[mo - 1]
+    return yy, mo, dd, hh, mm, ss, dow, mon, hh12, period
+
+
 def get_time_strings():
     yy, mo, dd, hh, mm, ss = rtc.datetime()
     period = "AM" if hh < 12 else "PM"

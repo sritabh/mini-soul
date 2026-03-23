@@ -3,6 +3,7 @@
 
 import time
 import math
+import rtc_utils
 
 W = 128
 H = 64
@@ -113,11 +114,6 @@ _FONT = {
     'Y': [0b101, 0b101, 0b010, 0b010, 0b010],
 }
 
-_MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN',
-           'JUL','AUG','SEP','OCT','NOV','DEC']
-_DAYS   = ['MON','TUE','WED','THU','FRI','SAT','SUN']
-
-
 def _draw_char(oled, x, y, ch, scale=1):
     rows = _FONT.get(ch.upper(), _FONT[' '])
     for ri, row in enumerate(rows):
@@ -150,26 +146,6 @@ def cx_for(text, scale=1, area_w=W, area_x=0):
 
 
 # ────────────────────────────────────────────────────────────────────────────
-#  RTC helpers
-# ────────────────────────────────────────────────────────────────────────────
-
-def _day_of_week(y, m, d):
-    t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
-    if m < 3:
-        y -= 1
-    return (y + y//4 - y//100 + y//400 + t[m-1] + d) % 7
-
-
-def _get(rtc):
-    yy, mo, dd, hh, mm, ss = rtc.datetime()
-    period = "AM" if hh < 12 else "PM"
-    hh12   = hh % 12 or 12
-    dow    = _DAYS[_day_of_week(yy, mo, dd)]
-    mon    = _MONTHS[mo - 1]
-    return yy, mo, dd, hh, mm, ss, dow, mon, hh12, period
-
-
-# ────────────────────────────────────────────────────────────────────────────
 #  Shared trig table
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -179,8 +155,8 @@ _COS = [math.cos(i * math.pi / 30) for i in range(60)]
 
 class _DigitalBold:
 
-    def draw(self, oled, rtc):
-        yy, mo, dd, hh, mm, ss, dow, mon, hh12, period = _get(rtc)
+    def draw(self, oled):
+        yy, mo, dd, hh, mm, ss, dow, mon, hh12, period = rtc_utils.get_time_raw()
         oled.fill(0)
 
         # ── Time ──────────────────────────────────────────────────────
@@ -225,8 +201,8 @@ class _DigitalBold:
 
 class _MinimalSplit:
 
-    def draw(self, oled, rtc):
-        yy, mo, dd, hh, mm, ss, dow, mon, hh12, period = _get(rtc)
+    def draw(self, oled):
+        yy, mo, dd, hh, mm, ss, dow, mon, hh12, period = rtc_utils.get_time_raw()
         oled.fill(0)
 
         DIV = 46
@@ -290,8 +266,8 @@ class _MinimalSplit:
 
 class _Analog:
 
-    def draw(self, oled, rtc):
-        yy, mo, dd, hh, mm, ss, dow, mon, hh12, period = _get(rtc)
+    def draw(self, oled):
+        yy, mo, dd, hh, mm, ss, dow, mon, hh12, period = rtc_utils.get_time_raw()
         oled.fill(0)
 
         cx, cy, r = 32, 32, 30
@@ -375,8 +351,8 @@ class _Analog:
 
 class _Orbit:
 
-    def draw(self, oled, rtc):
-        yy, mo, dd, hh, mm, ss, dow, mon, hh12, period = _get(rtc)
+    def draw(self, oled):
+        yy, mo, dd, hh, mm, ss, dow, mon, hh12, period = rtc_utils.get_time_raw()
         oled.fill(0)
 
         cx, cy, r = 64, 32, 30
@@ -436,7 +412,6 @@ class ClockFace:
     Parameters
     ----------
     oled  : SSD1306_I2C instance
-    rtc   : DS3231 instance  (datetime() must return yy, mo, dd, hh, mm, ss)
     face  : "digital_bold" | "minimal_split" | "analog" | "orbit"
 
     Methods
@@ -449,9 +424,8 @@ class ClockFace:
 
     FACE_NAMES = list(_FACES.keys())
 
-    def __init__(self, oled, rtc, face="digital_bold"):
+    def __init__(self, oled, face="digital_bold"):
         self.oled  = oled
-        self.rtc   = rtc
         self._idx  = self.FACE_NAMES.index(face) if face in self.FACE_NAMES else 0
 
     @property
@@ -459,7 +433,7 @@ class ClockFace:
         return self.FACE_NAMES[self._idx]
 
     def tick(self):
-        _FACES[self.face_name].draw(self.oled, self.rtc)
+        _FACES[self.face_name].draw(self.oled)
 
     def next(self):
         self._idx = (self._idx + 1) % len(self.FACE_NAMES)
@@ -471,12 +445,9 @@ class ClockFace:
 
 
 if __name__ == "__main__":
-    from machine import SoftI2C, Pin
     from ssd1306 import SSD1306_I2C
-    from ds3231 import DS3231
 
-    i2c  = SoftI2C(sda=Pin(8), scl=Pin(9))
-    rtc  = DS3231(i2c)
+    i2c  = rtc_utils.i2c
     oled = SSD1306_I2C(128, 64, i2c)
 
     # digital_bold
@@ -484,5 +455,5 @@ if __name__ == "__main__":
     # analog
     # orbit
 
-    clock = ClockFace(oled, rtc, face="digital_bold")
+    clock = ClockFace(oled, face="digital_bold")
     clock.run()
