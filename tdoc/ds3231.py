@@ -3,6 +3,7 @@ import struct
 
 DS3231_ADDR = 0x68
 
+# Realtime clock
 class DS3231:
     def __init__(self, i2c):
         self.i2c = i2c

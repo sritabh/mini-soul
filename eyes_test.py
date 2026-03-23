@@ -11,10 +11,7 @@ from machine import SoftI2C, Pin
 from ssd1306 import SSD1306_I2C
 import time
 
-btn = Pin(2, Pin.IN, Pin.PULL_UP)
-
-last_release_time = 0
-DEBOUNCE_MS = 400  # tune this if needed
+from button import Button
 
 from eyes.controller import Eyes
 from eyes.presets import (
@@ -89,8 +86,8 @@ eyes.set_expression(expr)
 last_switch_ms  = time.ticks_ms()
 mid_blinked     = False   # have we done the mid-hold blink for this expression?
 
-def on_release(pin):
-    global idx, last_release_time
+def on_btn_press():
+    global idx
     idx = (idx + 1) % len(SEQUENCE)
     expr, label = SEQUENCE[idx]
     print("Expression:", label)
@@ -98,7 +95,7 @@ def on_release(pin):
     eyes.draw()
     oled.show()
 
-btn.irq(trigger=Pin.IRQ_RISING, handler=on_release)
+btn = Button(pin_num=2, on_press=on_btn_press)
 
 
 # --- Main loop: render every frame; switch expression on a timer ---
