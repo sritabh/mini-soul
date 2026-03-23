@@ -4,15 +4,15 @@ eyes_demo.py — Cycles through all 24 expressions with smooth transitions and b
 Auto-blink fires every 3.5 s automatically. A forced mid-hold blink also
 triggers once per expression so you can see it working at every emotion.
 
-Flash eyes.py + eyes_demo.py to the ESP32.
+Flash the eyes/ package + eyes_demo.py to the ESP32.
 """
 
 from machine import SoftI2C, Pin
 from ssd1306 import SSD1306_I2C
 import time
 
-from eyes import (
-    Eyes,
+from eyes.controller import Eyes
+from eyes.presets import (
     EXPR_NORMAL,
     # Six basic
     EXPR_SADNESS, EXPR_ANGER, EXPR_HAPPINESS,
