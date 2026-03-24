@@ -168,6 +168,7 @@ class HttpServer:
         print("Listening on port 80...")
         from mdns import run_mdns
         asyncio.create_task(run_mdns('minisoul', ip))
+        # keep alive loop
         while True:
             await asyncio.sleep(3600)
 

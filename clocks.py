@@ -443,6 +443,12 @@ class ClockFace:
             self.tick()
             time.sleep(1)
 
+    async def run_async(self):
+        import uasyncio as asyncio
+        while True:
+            self.tick()
+            await asyncio.sleep(1)
+
 
 if __name__ == "__main__":
     from ssd1306 import SSD1306_I2C
