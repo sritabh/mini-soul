@@ -1,0 +1,11 @@
+{
+  "name": "MiniSoul",
+  "clock_face": "digital_bold",
+  "available_clock_faces": [
+    "digital_bold",
+    "minimal_split",
+    "analog",
+    "orbit"
+  ],
+  "updated_at": null
+}

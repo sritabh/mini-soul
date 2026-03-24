@@ -1,78 +1,193 @@
 import network
-import socket
-try:
-    import ujson as json
-except ImportError:
-    import json
+import uasyncio as asyncio
+import ujson as json
+from config_utils import get_config, save_config
 
-# Create hotspot
-ap = network.WLAN(network.AP_IF)
-ap.active(True)
-ap.config(essid="MiniSoul", password="myminisoul", authmode=3)
 
-while not ap.active():
+def _noop(*args, **kwargs):
     pass
 
-print("Hotspot started:", ap.ifconfig())
 
+class HttpServer:
+    def __init__(self, on_started=None, on_connected=None, on_saved=None):
+        self._on_started   = on_started   or _noop
+        self._on_connected = on_connected or _noop
+        self._on_saved     = on_saved     or _noop
 
-def parse_request(data):
-    sep = b'\r\n\r\n'
-    sep_idx = data.find(sep)
-    if sep_idx == -1:
-        headers_raw, body = data, b''
-    else:
-        headers_raw, body = data[:sep_idx], data[sep_idx + 4:]
-    first_line = headers_raw.decode('utf-8').split('\r\n')[0].split(' ')
-    method = first_line[0] if first_line else 'GET'
-    path = first_line[1] if len(first_line) > 1 else '/'
-    return method, path, body
+    # ── Hotspot ───────────────────────────────────────────────────────────────
 
+    def _start_hotspot(self):
+        ap = network.WLAN(network.AP_IF)
+        ap.active(True)
+        ap.config(essid="MiniSoul", password="myminisoul", authmode=3)
+        while not ap.active():
+            pass
+        print("Hotspot started:", ap.ifconfig())
+        return ap
 
-# HTTP server
-addr = socket.getaddrinfo("0.0.0.0", 80)[0][-1]
-s = socket.socket()
-s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(addr)
-s.listen(1)
-print("Listening on port 80...")
+    # ── Request / response helpers ────────────────────────────────────────────
 
-while True:
-    conn, addr = s.accept()
-    print("Connection from:", addr)
-    request = conn.recv(4096)
+    @staticmethod
+    def _parse_request(data):
+        sep = b'\r\n\r\n'
+        sep_idx = data.find(sep)
+        if sep_idx == -1:
+            headers_raw, body = data, b''
+        else:
+            headers_raw, body = data[:sep_idx], data[sep_idx + 4:]
+        first_line = headers_raw.decode('utf-8').split('\r\n')[0].split(' ')
+        method = first_line[0] if first_line else 'GET'
+        path = first_line[1] if len(first_line) > 1 else '/'
+        return method, path, body
 
-    method, path, body = parse_request(request)
-    print("Request:", method, path)
+    @staticmethod
+    def _make_response(status, content_type, body):
+        return (
+            "HTTP/1.1 {}\r\n"
+            "Content-Type: {}\r\n"
+            "Content-Length: {}\r\n"
+            "\r\n{}"
+        ).format(status, content_type, len(body), body)
 
-    if method == 'GET' and path == '/':
+    @classmethod
+    def _json_response(cls, obj, status="200 OK"):
+        return cls._make_response(status, "application/json", json.dumps(obj))
+
+    @classmethod
+    def _html_response(cls, html):
+        return cls._make_response("200 OK", "text/html", html)
+
+    @classmethod
+    def _not_found(cls, msg="Not found"):
+        return cls._make_response("404 Not Found", "text/plain", msg)
+
+    # ── Config helpers ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _load_config():
+        return get_config()
+
+    @staticmethod
+    def _save_config(config):
+        save_config(config)
+
+    # ── Route handlers ────────────────────────────────────────────────────────
+
+    def _handle_get_root(self, _body):
         try:
             with open('setup_ui/index.html', 'r') as f:
                 html = f.read()
-            response = (
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html\r\n"
-                "Content-Length: {}\r\n"
-                "\r\n{}"
-            ).format(len(html), html)
+            return self._html_response(html)
         except OSError:
-            response = "HTTP/1.1 404 Not Found\r\nContent-Length: 14\r\n\r\nFile not found."
-    elif method == 'POST' and path == '/save':
+            return self._not_found("File not found.")
+
+    def _handle_get_config(self, _body):
+        return self._json_response(self._load_config())
+
+    @staticmethod
+    def _parse_iso_datetime(s):
+        date_part, time_part = s.split('T')
+        yy, mo, dd = (int(x) for x in date_part.split('-'))
+        parts = time_part.split(':')
+        hh, mm = int(parts[0]), int(parts[1])
+        ss = int(parts[2]) if len(parts) > 2 else 0
+        return yy, mo, dd, hh, mm, ss
+
+    def _handle_post_save(self, body):
         try:
             data = json.loads(body)
             print("Received data:", data)
-            resp_body = '{"status":"ok"}'
-        except Exception as e:
-            print("Error parsing body:", e)
-            resp_body = '{"status":"error"}'
-        response = (
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: application/json\r\n"
-            "Content-Length: {}\r\n"
-            "\r\n{}"
-        ).format(len(resp_body), resp_body)
-    else:
-        response = "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot found"
+            config = self._load_config()
+            _IGNORE = {'updated_at'}
+            original = {k: v for k, v in config.items() if k not in _IGNORE}
 
-    conn.sendall(response.encode('utf-8'))
-    conn.close()
+            if 'name' in data:
+                config['name'] = data['name']
+
+            if 'clock_face' in data:
+                available = config.get('available_clock_faces', [])
+                if data['clock_face'] in available:
+                    config['clock_face'] = data['clock_face']
+
+            time_str = data.get('time', '')
+            if time_str:
+                config['updated_at'] = time_str
+                from rtc_utils import init_rtc
+                init_rtc(force_set=True, new_time=self._parse_iso_datetime(time_str))
+
+            updated = {k: v for k, v in config.items() if k not in _IGNORE}
+            if updated != original:
+                self._save_config(config)
+                print("Config saved.")
+            else:
+                print("Config unchanged, skipping write.")
+
+            self._on_saved(config)
+            return self._json_response({"status": "ok"})
+        except Exception as e:
+            print("Error handling /save:", e)
+            return self._json_response({"status": "error", "msg": str(e)}, "500 Internal Server Error")
+
+    # ── Router ────────────────────────────────────────────────────────────────
+
+    def _dispatch(self, method, path, body):
+        routes = {
+            ('GET',  '/'):       self._handle_get_root,
+            ('GET',  '/config'): self._handle_get_config,
+            ('POST', '/save'):   self._handle_post_save,
+        }
+        handler = routes.get((method, path))
+        if handler:
+            return handler(body)
+        return self._not_found()
+
+    # ── Async connection handler ──────────────────────────────────────────────
+
+    async def _handle_connection(self, reader, writer):
+        addr = writer.get_extra_info('peername')
+        print("Connection from:", addr)
+        self._on_connected(addr)
+        try:
+            request = await reader.read(4096)
+            method, path, body = self._parse_request(request)
+            print("Request:", method, path)
+            response = self._dispatch(method, path, body)
+            writer.write(response.encode('utf-8'))
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    # ── Public entry point ────────────────────────────────────────────────────
+
+    async def run_server(self):
+        ap = self._start_hotspot()
+        ip = ap.ifconfig()[0]
+        self._on_started(ip)
+        await asyncio.start_server(self._handle_connection, "0.0.0.0", 80)
+        print("Listening on port 80...")
+        while True:
+            await asyncio.sleep(3600)
+
+
+# ── Standalone execution ──────────────────────────────────────────────────────
+
+if __name__ == '__main__':
+    from qr_display import show_qr
+
+    def on_started(ip):
+        from machine import SoftI2C, Pin
+        from ssd1306 import SSD1306_I2C
+        i2c  = SoftI2C(sda=Pin(8), scl=Pin(9))
+        oled = SSD1306_I2C(128, 64, i2c)
+        show_qr(oled, "http://{}/".format(ip), scale=2)
+        print("Showing QR for", ip)
+
+    def on_connected(addr):
+        print("Client connected:", addr)
+
+    def on_saved(config):
+        print("Settings saved:", config.get('name'))
+
+    server = HttpServer(on_started=on_started, on_connected=on_connected, on_saved=on_saved)
+    asyncio.run(server.run_server())

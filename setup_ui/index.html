@@ -110,7 +110,8 @@
     }
 
     input[type="text"],
-    input[type="datetime-local"] {
+    input[type="datetime-local"],
+    select {
       width: 100%;
       padding: 10px 12px;
       border: 1px solid #d4d4d4;
@@ -120,10 +121,12 @@
       background: #fafafa;
       outline: none;
       transition: border-color 0.15s, background 0.15s;
+      appearance: none;
     }
 
     input[type="text"]:focus,
-    input[type="datetime-local"]:focus {
+    input[type="datetime-local"]:focus,
+    select:focus {
       border-color: #888;
       background: #fff;
     }
@@ -189,6 +192,10 @@
           <label for="set-time">Set Time</label>
           <input type="datetime-local" id="set-time" />
         </div>
+        <div class="form-group">
+          <label for="clock-face">Set Clock Face</label>
+          <select id="clock-face"></select>
+        </div>
         <button type="submit" class="submit-btn">Save</button>
       </form>
     </div>
@@ -228,10 +235,38 @@
     tickClock();
     setInterval(tickClock, 1000);
 
+    async function loadConfig() {
+      try {
+        const res = await fetch('/config');
+        if (!res.ok) return;
+        const config = await res.json();
+
+        if (config.name) document.getElementById('name').value = config.name;
+
+        const select = document.getElementById('clock-face');
+        select.innerHTML = '';
+        (config.available_clock_faces || []).forEach(face => {
+          const opt = document.createElement('option');
+          opt.value = face;
+          opt.textContent = face.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          if (face === config.clock_face) opt.selected = true;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load config:', err);
+      }
+    }
+
+    loadConfig();
+
     async function handleSubmit(e) {
       e.preventDefault();
       const btn = e.submitter;
-      const payload = { name: document.getElementById('name').value.trim(), time: timeInput.value };
+      const payload = {
+        name: document.getElementById('name').value.trim(),
+        time: timeInput.value,
+        clock_face: document.getElementById('clock-face').value
+      };
       btn.disabled = true;
       btn.textContent = 'Saving…';
       try {
