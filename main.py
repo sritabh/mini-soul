@@ -44,6 +44,7 @@ def go_to_sleep():
     t = machine.TouchPad(machine.Pin(7))
     t.config(30000)
     esp32.wake_on_touch(True)
+    esp32.wake_on_ext1(pins=(machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP),), level=esp32.WAKEUP_ANY_HIGH)
     time.sleep_ms(200)
     dm.off()
     machine.deepsleep()
