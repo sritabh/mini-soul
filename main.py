@@ -5,10 +5,8 @@ import uasyncio as asyncio
 from ssd1306 import SSD1306_I2C
 import rtc_utils
 from display_manager import DisplayManager
-from button import Button
 
 SLEEP_TIMEOUT_MS = 5000
-TOUCH_PIN = 7
 
 cause = machine.reset_cause()
 
@@ -17,12 +15,11 @@ dm   = DisplayManager(oled)
 
 if cause == machine.DEEPSLEEP_RESET:
     wake = machine.wake_reason()
-    if wake == machine.TOUCHPAD_WAKE:
-        t = machine.TouchPad(machine.Pin(7))
-        val = t.read()
-        dm.show_text(f"T:{val}", show_for=3000)
-        time.sleep_ms(3000)
+    if wake == machine.EXT1_WAKE:        # Changed from EXT0_WAKE to EXT1_WAKE
+        dm.show_text("Awake!", show_for=2000)
 
+# Create pin ONCE at top level
+wake1 = machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_DOWN)
 
 _last_activity = time.ticks_ms()
 
@@ -30,21 +27,8 @@ def reset_sleep_timer():
     global _last_activity
     _last_activity = time.ticks_ms()
 
-
-def handle_press():
-    reset_sleep_timer()
-    dm.show_text("Hello!", show_for=2000)
-
-btn = Button(pin_num=2, on_single=handle_press)
-
-
 def go_to_sleep():
-    return
-    machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP).irq(handler=None)
-    t = machine.TouchPad(machine.Pin(7))
-    t.config(30000)
-    esp32.wake_on_touch(True)
-    esp32.wake_on_ext1(pins=(machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP),), level=esp32.WAKEUP_ANY_HIGH)
+    esp32.wake_on_ext1(pins=(wake1,), level=esp32.WAKEUP_ANY_HIGH)  # Changed to ext1
     time.sleep_ms(200)
     dm.off()
     machine.deepsleep()
