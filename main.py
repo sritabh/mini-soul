@@ -1,47 +1,58 @@
+# main.py
 import machine
 import esp32
 import time
-import uasyncio as asyncio
 from ssd1306 import SSD1306_I2C
 import rtc_utils
-from display_manager import DisplayManager
+from clocks import ClockFace
+from machine import TouchPad, Pin, lightsleep, wake_reason
 
-SLEEP_TIMEOUT_MS = 5000
+SLEEP_TIMEOUT_MS    = 5000
+TOUCH_POLL_MS       = 100
 
-cause = machine.reset_cause()
+BUTTON_PIN          = 2
+TOUCH_PIN           = 4
+TOUCH_THRESHOLD_PCT = 1.2
 
-oled = SSD1306_I2C(128, 64, rtc_utils.i2c)
-dm   = DisplayManager(oled)
+oled  = SSD1306_I2C(128, 64, rtc_utils.i2c)
+clock = ClockFace(oled, face="digital_bold")
 
-if cause == machine.DEEPSLEEP_RESET:
-    wake = machine.wake_reason()
-    if wake == machine.EXT1_WAKE:        # Changed from EXT0_WAKE to EXT1_WAKE
-        dm.show_text("Awake!", show_for=2000)
+button = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_DOWN)
+esp32.wake_on_ext0(pin=button, level=esp32.WAKEUP_ANY_HIGH)
 
-# Create pin ONCE at top level
-wake1 = machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_DOWN)
+touch_pad = TouchPad(Pin(TOUCH_PIN))
+time.sleep(1)
+_touch_baseline  = touch_pad.read()
+_touch_threshold = int(_touch_baseline * TOUCH_THRESHOLD_PCT)
+print(f"Touch baseline={_touch_baseline}  threshold={_touch_threshold}")
 
+_display_on    = False
 _last_activity = time.ticks_ms()
 
-def reset_sleep_timer():
-    global _last_activity
+def is_touched():
+    return touch_pad.read() > _touch_threshold
+
+def turn_display_on():
+    global _display_on, _last_activity
+    _display_on    = True
     _last_activity = time.ticks_ms()
+    clock.tick()
 
-def go_to_sleep():
-    esp32.wake_on_ext1(pins=(wake1,), level=esp32.WAKEUP_ANY_HIGH)  # Changed to ext1
-    time.sleep_ms(200)
-    dm.off()
-    machine.deepsleep()
+def turn_display_off():
+    global _display_on
+    _display_on = False
+    oled.fill(0)
+    oled.show()
 
-async def main():
-    dm.show_clock()
+while True:
+    lightsleep(TOUCH_POLL_MS)
 
-    async def sleep_watcher():
-        while True:
-            if time.ticks_diff(time.ticks_ms(), _last_activity) >= SLEEP_TIMEOUT_MS:
-                go_to_sleep()
-            await asyncio.sleep_ms(500)
+    reason = wake_reason()
 
-    await asyncio.gather(dm.run(), sleep_watcher())
+    if reason == machine.EXT0_WAKE or is_touched():
+        turn_display_on()
+    elif _display_on:
+        clock.tick()
 
-asyncio.run(main())
+    if _display_on and time.ticks_diff(time.ticks_ms(), _last_activity) >= SLEEP_TIMEOUT_MS:
+        turn_display_off()
