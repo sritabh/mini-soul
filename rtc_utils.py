@@ -6,6 +6,10 @@ EEPROM_ADDR = 0x57
 FLAG_ADDR = 0x0000
 FLAG_VALUE = 0xAB
 
+# Power up RTC module before initialising I2C
+_rtc_pwr = Pin(6, Pin.OUT, value=1)
+time.sleep_ms(10)  # allow rail to stabilise
+
 i2c = SoftI2C(sda=Pin(8), scl=Pin(9))
 rtc = DS3231(i2c)
 

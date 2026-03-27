@@ -2,7 +2,6 @@
 import machine
 import esp32
 import time
-from ssd1306 import SSD1306_I2C
 import rtc_utils
 from display_manager import DisplayManager
 from machine import TouchPad, Pin, lightsleep, wake_reason
@@ -15,8 +14,7 @@ BUTTON_PIN          = 2
 TOUCH_PIN           = 4
 TOUCH_THRESHOLD_PCT = 1.2
 
-oled = SSD1306_I2C(128, 64, rtc_utils.i2c)
-dm   = DisplayManager(oled)
+dm = DisplayManager(rtc_utils.i2c)
 
 button = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_DOWN)
 esp32.wake_on_ext0(pin=button, level=esp32.WAKEUP_ANY_HIGH)
@@ -32,6 +30,7 @@ def is_touched():
 
 
 async def run_awake_phase(wake):
+    dm.awake_from_sleep()  # re-init OLED and VCC after lightsleep
     if wake == "touch":
         dm.show_text("Woke up!", "(touch)", show_for=2000)  # reverts to clock after 2s
     else:
@@ -39,7 +38,6 @@ async def run_awake_phase(wake):
     display_task = asyncio.create_task(dm.run())
     await asyncio.sleep_ms(SLEEP_TIMEOUT_MS)
     display_task.cancel()
-    dm.off()
 
 
 def run_sleep_phase():
@@ -52,6 +50,9 @@ def run_sleep_phase():
         if is_touched():
             return "touch"
 
+
+# On first boot treat it as a button wake so the display comes on immediately
+asyncio.run(run_awake_phase("button"))
 
 while True:
     wake = run_sleep_phase()                # lightsleep owns CPU while display is off

@@ -4,6 +4,10 @@ from ssd1306 import SSD1306_I2C
 import time
 import urandom
 
+# Power up OLED via pin 7 before I2C init
+Pin(7, Pin.OUT, value=1)
+time.sleep_ms(10)
+
 i2c = SoftI2C(sda=Pin(8), scl=Pin(9))
 rtc = DS3231(i2c)
 oled = SSD1306_I2C(128, 64, i2c)

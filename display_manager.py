@@ -1,4 +1,6 @@
 import uasyncio as asyncio
+from machine import Pin
+from ssd1306 import SSD1306_I2C
 import config_utils
 from clocks import ClockFace
 from qr_display import show_qr as _render_qr
@@ -16,32 +18,44 @@ class DisplayManager:
 
     Usage
     -----
-    dm = DisplayManager(oled)
+    dm = DisplayManager(i2c)
     dm.show_clock("digital_bold")
     await dm.run()
+
+    After every lightsleep call dm.awake_from_sleep() before rendering.
     """
 
-    def __init__(self, oled):
-        self.oled   = oled
-        self._clock = ClockFace(oled, face=config_utils.get_clock_face())
+    def __init__(self, i2c):
+        self._i2c = i2c
+        # Pin 7 powers the OLED VCC rail; keep the object so we can
+        # re-assert HIGH after every lightsleep.
+        self._vcc = Pin(7, Pin.OUT, value=1)
+        self.oled = SSD1306_I2C(128, 64, i2c)
+        self._clock = ClockFace(self.oled, face=config_utils.get_clock_face())
         self._mode  = None
         self._qr_data   = None
         self._qr_scale  = 1
         self._text_lines = []
         self._timer_task = None
 
+    # ── Wake from sleep ───────────────────────────────────────────────────
+
+    def awake_from_sleep(self):
+        """Re-initialise the OLED after lightsleep.
+
+        lightsleep drops the I2C bus and can float GPIO outputs, so the
+        SSD1306 must be re-handed-shake and VCC must be re-asserted.
+        Call this once at the start of every awake phase.
+        """
+        self._vcc.value(1)
+        self.oled = SSD1306_I2C(128, 64, self._i2c)
+        self._clock = ClockFace(self.oled, face=config_utils.get_clock_face())
+
     # ── Default screen ────────────────────────────────────────────────────
 
     def show_default_screen(self):
         """Revert to the default screen (clock face set at init)."""
         self.show_clock()
-
-    def off(self):
-        """Clear the display and stop rendering."""
-        self._cancel_timer()
-        self._mode = None
-        self.oled.fill(0)
-        self.oled.show()
 
     # ── Mode setters ──────────────────────────────────────────────────────
 
@@ -106,3 +120,15 @@ class DisplayManager:
         while True:
             self._render()
             await asyncio.sleep(1)
+
+
+if __name__ == "__main__":
+    from machine import SoftI2C
+
+    # Bring up I2C on the same pins used by rtc_utils
+    i2c = SoftI2C(sda=Pin(8), scl=Pin(9))
+
+    dm = DisplayManager(i2c)  # creates OLED internally and powers Pin 7
+    dm.show_clock()
+
+    asyncio.run(dm.run())
