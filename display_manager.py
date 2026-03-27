@@ -1,4 +1,5 @@
 import uasyncio as asyncio
+import config_utils
 from clocks import ClockFace
 from qr_display import show_qr as _render_qr
 
@@ -20,9 +21,9 @@ class DisplayManager:
     await dm.run()
     """
 
-    def __init__(self, oled, default_face="digital_bold"):
+    def __init__(self, oled):
         self.oled   = oled
-        self._clock = ClockFace(oled, face=default_face)
+        self._clock = ClockFace(oled, face=config_utils.get_clock_face())
         self._mode  = None
         self._qr_data   = None
         self._qr_scale  = 1
@@ -32,7 +33,7 @@ class DisplayManager:
     # ── Default screen ────────────────────────────────────────────────────
 
     def show_default_screen(self):
-        """Revert to the default screen (clock face)."""
+        """Revert to the default screen (clock face set at init)."""
         self.show_clock()
 
     def off(self):
