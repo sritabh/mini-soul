@@ -8,17 +8,25 @@ class Button:
         self._pin = Pin(pin_num, Pin.IN, Pin.PULL_DOWN)
         self._on_click = on_click
         self._last_press_ms = 0
-        self._pin.irq(trigger=Pin.IRQ_RISING, handler=self._isr)
+        self._pin.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=self._isr)
+        self._currently_pressed = False
 
     def _isr(self, pin):
-        # Confirm the pin is actually HIGH — filters release-bounce spikes
-        if pin.value() != 1:
-            return
-        now = time.ticks_ms()
-        if time.ticks_diff(now, self._last_press_ms) >= DEBOUNCE_MS:
-            self._last_press_ms = now
-            if self._on_click:
-                self._on_click()
+        val = pin.value()
+        if val == 1:
+            if self._currently_pressed:
+                return
+            # print("Button pressed!", time.ticks_ms())
+            self._currently_pressed = True
+        else:
+            if not self._currently_pressed:
+                return
+            self._currently_pressed = False
+            now = time.ticks_ms()
+            if time.ticks_diff(now, self._last_press_ms) >= DEBOUNCE_MS:
+                self._last_press_ms = now
+                if self._on_click:
+                    self._on_click()
 
 if __name__ == "__main__":
     def handle_click():
