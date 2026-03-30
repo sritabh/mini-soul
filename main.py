@@ -29,15 +29,28 @@ def is_touched():
     return touch_pad.read() > _touch_threshold
 
 
-async def run_awake_phase(wake):
-    dm.awake_from_sleep()  # re-init OLED and VCC after lightsleep
-    if wake == "touch":
-        dm.show_text("Woke up!", "(touch)", show_for=2000)  # reverts to clock after 2s
-    else:
-        dm.show_clock()
+async def handle_on_touch():
+    """Show animated face with random expressions for the awake duration."""
+    dm.show_face()
     display_task = asyncio.create_task(dm.run())
     await asyncio.sleep_ms(SLEEP_TIMEOUT_MS)
     display_task.cancel()
+
+
+async def handle_on_click():
+    """Show clock face for the awake duration."""
+    dm.show_clock()
+    display_task = asyncio.create_task(dm.run())
+    await asyncio.sleep_ms(SLEEP_TIMEOUT_MS)
+    display_task.cancel()
+
+
+async def run_awake_phase(wake):
+    dm.awake_from_sleep()  # re-init OLED and VCC after lightsleep
+    if wake == "touch":
+        await handle_on_touch()
+    else:
+        await handle_on_click()
 
 
 def run_sleep_phase():

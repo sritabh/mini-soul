@@ -15,6 +15,7 @@ class DisplayManager:
     clock  — ticking clock face, redrawn every second
     qr     — static QR code
     text   — static centred text lines
+    face   — animated eyes cycling through random expressions
 
     Usage
     -----
@@ -37,6 +38,8 @@ class DisplayManager:
         self._qr_scale  = 1
         self._text_lines = []
         self._timer_task = None
+        self._face      = None
+        self._face_task = None
 
     # ── Wake from sleep ───────────────────────────────────────────────────
 
@@ -47,6 +50,7 @@ class DisplayManager:
         SSD1306 must be re-handed-shake and VCC must be re-asserted.
         Call this once at the start of every awake phase.
         """
+        self._cancel_face()  # stop any face task left over from the previous awake phase
         self._vcc.value(1)
         self.oled = SSD1306_I2C(128, 64, self._i2c)
         self._clock = ClockFace(self.oled, face=config_utils.get_clock_face())
@@ -85,12 +89,27 @@ class DisplayManager:
         self._render()
         self._schedule_default(show_for)
 
+    def show_face(self):
+        """Switch to face mode — animated eyes cycling through random expressions."""
+        self._cancel_timer()  # also cancels any existing face task
+        from face import Face
+        self._face = Face(self.oled)
+        self._mode = "face"
+        self._face_task = asyncio.create_task(self._face.run())
+
     # ── Timer helpers ─────────────────────────────────────────────────────
+
+    def _cancel_face(self):
+        if self._face_task is not None:
+            self._face_task.cancel()
+            self._face_task = None
+        self._face = None
 
     def _cancel_timer(self):
         if self._timer_task is not None:
             self._timer_task.cancel()
             self._timer_task = None
+        self._cancel_face()  # switching any mode always stops the face
 
     def _schedule_default(self, ms):
         self._timer_task = asyncio.create_task(self._revert_after(ms))
@@ -116,10 +135,17 @@ class DisplayManager:
             self.oled.show()
 
     async def run(self):
-        """Continuously render the current mode. Yields every second."""
+        """Continuously render the current mode.
+
+        Face mode: yields every 200 ms — the face task drives its own rendering.
+        All other modes: re-render every second.
+        """
         while True:
-            self._render()
-            await asyncio.sleep(1)
+            if self._mode == "face":
+                await asyncio.sleep_ms(200)
+            else:
+                self._render()
+                await asyncio.sleep(1)
 
 
 if __name__ == "__main__":
