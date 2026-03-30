@@ -157,3 +157,5 @@ while True:
         sleep(2)
 
 ```
+
+> Deepsleep takes longer time to wake as whole micropython restarts. Probably not a good idea
