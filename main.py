@@ -8,7 +8,7 @@ from machine import TouchPad, Pin, lightsleep, wake_reason  # Pin still needed f
 import uasyncio as asyncio
 from button import Button
 
-SLEEP_TIMEOUT_MS    = 5000
+SLEEP_TIMEOUT_MS    = 10000
 TOUCH_POLL_MS       = 400
 
 BUTTON_PIN          = 2
@@ -60,6 +60,20 @@ async def handle_on_click():
         elapsed += 200
     display_task.cancel()
 
+async def show_pre_sleep(duration_ms=3000):
+    """Show the sleeping expression for duration_ms before going to sleep."""
+    from face import Face
+    from eyes.presets import EXPR_ASLEEP
+    face = Face(dm.oled, transition_ms=300)
+    face.set_expression(EXPR_ASLEEP)
+    elapsed = 0
+    while elapsed < duration_ms:
+        face.eyes.draw()
+        dm.oled.show()
+        await asyncio.sleep_ms(30)
+        elapsed += 30
+
+
 async def run_awake_phase(wake):
     global _show_settings
     _show_settings = False  # clear any hold that fired during sleep transition
@@ -69,6 +83,7 @@ async def run_awake_phase(wake):
     else:
         await show_text("Clicked")  # show something immediately on button wake
         await handle_on_click()
+    await show_pre_sleep() # TODO: Have better way to manage animation
 
 async def show_text(text, duration_ms=3000):
     dm.show_text(text)
