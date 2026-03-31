@@ -63,9 +63,9 @@ async def handle_on_click():
 async def show_pre_sleep(duration_ms=3000):
     """Show the sleeping expression for duration_ms before going to sleep."""
     from face import Face
-    from eyes.presets import EXPR_ASLEEP
+    from eyes.presets import EXPR_BORED
     face = Face(dm.oled, transition_ms=300)
-    face.set_expression(EXPR_ASLEEP)
+    face.set_expression(EXPR_BORED)
     elapsed = 0
     while elapsed < duration_ms:
         face.eyes.draw()
@@ -81,7 +81,6 @@ async def run_awake_phase(wake):
     if wake == "touch":
         await handle_on_touch()
     else:
-        await show_text("Clicked")  # show something immediately on button wake
         await handle_on_click()
     await show_pre_sleep() # TODO: Have better way to manage animation
 

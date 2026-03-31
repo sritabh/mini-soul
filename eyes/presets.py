@@ -45,30 +45,30 @@ def _presets(eye_size):
     # SADNESS: narrow, outer corners drooping, sharp top, rounded bottom
     p['sadness']     = (mk(40, 15, st= 0.50, rt=1,  rb=10), None)
 
-    # ANGER: inner top corners pushed down, sharp top, large bottom radius
-    p['anger']       = (mk(40, 20, ox=-3, st=-0.30, rt=2,  rb=12), None)
+    # ANGER: inner top corners pushed down hard, sharp top, large bottom radius
+    p['anger']       = (mk(40, 18, ox=-3, st=-0.40, rt=1,  rb=12), None)
 
-    # HAPPINESS: short inverted-D, flat bottom, fully rounded top
-    p['happiness']   = (mk(40, 10, rt=10, rb=0),  None)
+    # HAPPINESS: short arch/dome, flat-ish bottom, fully rounded top, shifted up
+    p['happiness']   = (mk(40, 14, oy=-7, rt=10, rb=3),  None)
 
-    # SURPRISE: large, nearly circular eyes
-    p['surprise']    = (mk(45, 45, ox=-2, rt=16, rb=16), None)
+    # SURPRISE: large, nearly circular eyes — no inward offset to avoid overlap
+    p['surprise']    = (mk(45, 45, rt=16, rb=16), None)
 
-    # DISGUST: narrow horizontal, inner top corners slightly down
-    p['disgust']     = (mk(40, 12, st=-0.20, rt=2,  rb=8),  None)
+    # DISGUST: narrow, slight outer-corner drop (sneer), flat angular top
+    p['disgust']     = (mk(40, 12, st= 0.15, rt=2,  rb=6),  None)
 
-    # FEAR: wide open, outer corners very slightly lower
-    p['fear']        = (mk(40, 40, ox=-3, st= 0.10, rt=12, rb=8),  None)
+    # FEAR: wide open, more outer-corner droop for expressive scared look
+    p['fear']        = (mk(44, 44, ox=-3, st= 0.25, rt=14, rb=10), None)
 
     # ------------------------------------------------------------------
     # Sub-faces of sadness
     # ------------------------------------------------------------------
 
-    # PLEADING: large puppy-dog eyes, outer droop, shifted slightly down
-    p['pleading']    = (mk(44, 30, oy= 2, st= 0.30, rt=10, rb=14), None)
+    # PLEADING: large puppy-dog eyes, strong outer droop, shifted slightly down
+    p['pleading']    = (mk(44, 32, oy= 3, st= 0.45, rt=12, rb=14), None)
 
-    # VULNERABLE: dramatic outer droop, tall eyes
-    p['vulnerable']  = (mk(40, 25, st= 0.45, rt=6,  rb=10), None)
+    # VULNERABLE: dramatic outer droop on both top AND bottom edges (tearful)
+    p['vulnerable']  = (mk(40, 28, st= 0.40, sb= 0.20, rt=4, rb=10), None)
 
     # DESPAIR: extreme outer drop, very narrow
     p['despair']     = (mk(40, 13, st= 0.65, rt=1,  rb=6),  None)
@@ -77,21 +77,21 @@ def _presets(eye_size):
     # Secondary middle row
     # ------------------------------------------------------------------
 
-    # GUILTY: half-closed, inner brow slightly down, eyes shifted up
-    p['guilty']      = (mk(40, 18, oy=-5, st=-0.20, rt=4,  rb=14), None)
+    # GUILTY: wide eye shifted down, top radius dominates height → strong arch = curved lid
+    p['guilty']      = (mk(40, 20, oy= 5, st= 0.10, rt=14, rb= 6), None)
 
-    # DISAPPOINTED: narrow, offset toward centre, flat inner corner
-    p['disappointed'] = (mk(40, 13, ox= 3, rt=2,  rb=10), None)
+    # DISAPPOINTED: narrow, slight outer droop, centred (no lateral offset)
+    p['disappointed'] = (mk(40, 13, st= 0.20, rt=2,  rb=10), None)
 
-    # EMBARRASSED: short, eyes shifted up (lower half visible), no slope
-    p['embarrassed'] = (mk(40, 13, oy=-4, rt=3,  rb=10), None)
+    # EMBARRASSED: short, eyes shifted DOWN (looking away), no slope
+    p['embarrassed'] = (mk(40, 13, oy= 4, rt=3,  rb=10), None)
 
     # ------------------------------------------------------------------
     # Sub-faces of disgust and anger
     # ------------------------------------------------------------------
 
-    # HORRIFIED: large wide eyes, outer corners slightly elevated
-    p['horrified']   = (mk(46, 38, ox=-2, st= 0.20, rt=14, rb=12), None)
+    # HORRIFIED: large eyes, inner corners slightly lower (alarmed/shocked tented top)
+    p['horrified']   = (mk(46, 38, ox= 1, st=-0.18, sb= 0.08, rt=14, rb=12), None)
 
     # SKEPTICAL: intentionally asymmetric
     #   right eye squints with downward inner slope
@@ -99,8 +99,10 @@ def _presets(eye_size):
     p['skeptical']   = (mk(40, 22, oy=-5, st=-0.25, rt=2,  rb=8),
                         mk(40, 40,                   rt=8,  rb=8))
 
-    # ANNOYED: flat top edge, large rounded bottom
-    p['annoyed']     = (mk(40, 14, rt=0,  rb=12), None)
+    # ANNOYED: asymmetric — right eye narrow flat-top, left eye just a thin slit
+    #   mirrors C++ Preset_Annoyed (h=12) + Preset_Annoyed_Alt (h=5)
+    p['annoyed']     = (mk(40, 12, rt=0,  rb=10),
+                        mk(40,  5, rt=0,  rb=4))
 
     # ------------------------------------------------------------------
     # Sub-faces of surprise
@@ -113,8 +115,8 @@ def _presets(eye_size):
     # AMAZED: maximum openness, perfectly round
     p['amazed']      = (mk(48, 48, rt=18, rb=18), None)
 
-    # EXCITED: wide open with inner corners slightly raised
-    p['excited']     = (mk(46, 36, st=-0.12, rt=14, rb=14), None)
+    # EXCITED: wide open, outer corners slightly lower, eyes slightly apart
+    p['excited']     = (mk(46, 36, ox= 2, st= 0.15, rt=14, rb=14), None)
 
     # ------------------------------------------------------------------
     # "Bad" expressions

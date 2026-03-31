@@ -20,6 +20,17 @@ pip3 install mpremote
 mpremote connect /dev/cu.usbmodem1101
 ```
 
+4. Backup files
+
+```bash
+mpremote connect /dev/cu.usbmodem1101 cp -r : ./backup/
+```
+
+5. Restore files
+
+```bash
+mpremote connect /dev/cu.usbmodem1101 cp -r ./backup/* :
+```
 
 # Sample Programs
 
