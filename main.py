@@ -11,7 +11,7 @@ from button import Button
 SLEEP_TIMEOUT_MS    = 5000
 TOUCH_POLL_MS       = 400
 
-BUTTON_PIN          = 1
+BUTTON_PIN          = 2
 TOUCH_PIN           = 4
 TOUCH_THRESHOLD_PCT = 1.2
 
