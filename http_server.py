@@ -151,7 +151,6 @@ class HttpServer:
     async def _handle_connection(self, reader, writer):
         addr = writer.get_extra_info('peername')
         print("Connection from:", addr)
-        self._on_connected(addr)
         try:
             request = await reader.read(4096)
             method, path, body = self._parse_request(request)
@@ -163,6 +162,21 @@ class HttpServer:
             writer.close()
             await writer.wait_closed()
 
+    async def _watch_stations(self):
+        """Fire on_connected when the first device joins the AP network."""
+        connected = False
+        while True:
+            try:
+                stations = self._ap.status('stations') if self._ap else []
+            except Exception:
+                stations = []
+            if stations and not connected:
+                connected = True
+                self._on_connected(stations[0])
+            elif not stations and connected:
+                connected = False   # device left — reset so re-joining fires again
+            await asyncio.sleep_ms(500)
+
     # ── Public entry point ────────────────────────────────────────────────────
 
     async def run_server(self):
@@ -173,6 +187,7 @@ class HttpServer:
         print("Listening on port 80...")
         from mdns import run_mdns
         asyncio.create_task(run_mdns('minisoul', ip))
+        asyncio.create_task(self._watch_stations())
         # keep alive loop
         while True:
             await asyncio.sleep(3600)
