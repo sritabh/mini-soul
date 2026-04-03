@@ -3,13 +3,13 @@
 1. Erase the flash memory of the board using the following command:
 
 ```bash
-esptool.py --chip esp32s3 --port /dev/cu.usbmodem1101 erase_flash
+esptool.py --chip esp32s3 --port /dev/cu.usbmodem101 erase_flash
 ```
 
 2. Flash the firmware to the board using the following command:
 
 ```bash
-esptool.py --chip esp32s3 --port /dev/cu.usbmodem1101 write_flash -z 0x0 ~/Downloads/ESP32_GENERIC_S3-20251209-v1.27.0.bin
+esptool.py --chip esp32s3 --port /dev/cu.usbmodem101 write_flash -z 0x0 ~/Downloads/ESP32_GENERIC_S3-20251209-v1.27.0.bin
 ```
 
 3. Remote connection

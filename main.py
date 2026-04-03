@@ -8,7 +8,7 @@ from machine import TouchPad, Pin, lightsleep, wake_reason  # Pin still needed f
 import uasyncio as asyncio
 from button import Button
 
-SLEEP_TIMEOUT_MS    = 10000
+SLEEP_TIMEOUT_MS    = 5000
 TOUCH_POLL_MS       = 400
 
 BUTTON_PIN          = 1
@@ -82,7 +82,6 @@ async def run_awake_phase(wake):
         await handle_on_touch()
     else:
         await handle_on_click()
-    await show_pre_sleep() # TODO: Have better way to manage animation
 
 async def show_text(text, duration_ms=3000):
     dm.show_text(text)
@@ -105,4 +104,3 @@ asyncio.run(run_awake_phase("button"))
 while True:
     wake = run_sleep_phase()                # lightsleep owns CPU while display is off
     asyncio.run(run_awake_phase(wake))      # asyncio owns CPU while display is on
-
