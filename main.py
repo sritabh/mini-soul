@@ -1,106 +1,83 @@
 # main.py
-import machine
 import esp32
 import time
 import rtc_utils
-from display_manager import DisplayManager
-from machine import TouchPad, Pin, lightsleep, wake_reason  # Pin still needed for TouchPad
+from machine import TouchPad, Pin
 import uasyncio as asyncio
+
+from display_manager import DisplayManager
 from button import Button
+from sleep_controller import SleepController, WakeEvent
+from modes.behavioral import BehavioralMode
+from modes.clock import ClockMode
+from modes.settings import SettingsMode
 
 SLEEP_TIMEOUT_MS    = 5000
 TOUCH_POLL_MS       = 400
-
 BUTTON_PIN          = 2
 TOUCH_PIN           = 4
 TOUCH_THRESHOLD_PCT = 1.2
 
+
 dm = DisplayManager(rtc_utils.i2c)
 
-_show_settings = False
-
-def on_btn_hold():
-    global _show_settings
-    _show_settings = True
-
-btn = Button(pin_num=BUTTON_PIN, on_hold=on_btn_hold)
-esp32.wake_on_ext0(pin=btn._pin, level=esp32.WAKEUP_ANY_HIGH)
-
-touch_pad = TouchPad(Pin(TOUCH_PIN))
-time.sleep(1) # Needed for stable touch readings after boot
+touch_pad        = TouchPad(Pin(TOUCH_PIN))
+time.sleep(1)    # Needed for stable touch readings after boot
 _touch_baseline  = touch_pad.read()
 _touch_threshold = int(_touch_baseline * TOUCH_THRESHOLD_PCT)
 print(f"Touch baseline={_touch_baseline}  threshold={_touch_threshold}")
 
-def is_touched():
-    return touch_pad.read() > _touch_threshold
+sleep_ctrl = SleepController(touch_pad, _touch_threshold, poll_ms=TOUCH_POLL_MS)
 
+_next_mode    = None
+_current_task = None
 
-async def handle_on_touch():
-    """Show animated face with random expressions for the awake duration."""
-    dm.show_face()
-    display_task = asyncio.create_task(dm.run())
-    await asyncio.sleep_ms(SLEEP_TIMEOUT_MS)
-    display_task.cancel()
+def _on_button_click():
+    global _next_mode
+    _next_mode = ClockMode(dm, timeout_ms=SLEEP_TIMEOUT_MS)
+    if _current_task is not None:
+        _current_task.cancel()
 
+def _on_button_hold():
+    global _next_mode
+    _next_mode = SettingsMode(dm)
+    if _current_task is not None:
+        _current_task.cancel()
 
-async def handle_on_click():
-    """Show clock face; switches to settings screen if button is held during this phase."""
-    global _show_settings
-    dm.show_clock()
-    display_task = asyncio.create_task(dm.run())
-    elapsed = 0
-    while elapsed < SLEEP_TIMEOUT_MS:
-        if _show_settings:
-            display_task.cancel()
-            _show_settings = False
-            await show_text("[Show Settings]")
-            return
-        await asyncio.sleep_ms(200)
-        elapsed += 200
-    display_task.cancel()
+btn = Button(pin_num=BUTTON_PIN, on_click=_on_button_click, on_hold=_on_button_hold)
+esp32.wake_on_ext0(pin=btn._pin, level=esp32.WAKEUP_ANY_HIGH)
 
-async def show_pre_sleep(duration_ms=3000):
-    """Show the sleeping expression for duration_ms before going to sleep."""
-    from face import Face
-    from eyes.presets import EXPR_BORED
-    face = Face(dm.oled, transition_ms=300)
-    face.set_expression(EXPR_BORED)
-    elapsed = 0
-    while elapsed < duration_ms:
-        face.eyes.draw()
-        dm.oled.show()
-        await asyncio.sleep_ms(30)
-        elapsed += 30
+async def run_awake_phase(initial_wake):
+    global _next_mode, _current_task
 
+    dm.awake_from_sleep()
 
-async def run_awake_phase(wake):
-    global _show_settings
-    _show_settings = False  # clear any hold that fired during sleep transition
-    dm.awake_from_sleep()  # re-init OLED and VCC after lightsleep
-    if wake == "touch":
-        await handle_on_touch()
+    if initial_wake == WakeEvent.TOUCH:
+        mode = BehavioralMode(dm, timeout_ms=SLEEP_TIMEOUT_MS)
     else:
-        await handle_on_click()
+        mode = ClockMode(dm, timeout_ms=SLEEP_TIMEOUT_MS)
 
-async def show_text(text, duration_ms=3000):
-    dm.show_text(text)
-    await asyncio.sleep_ms(duration_ms)
-
-def run_sleep_phase():
-    """Poll via lightsleep until button or touch wakes us. Returns wake reason."""
     while True:
-        lightsleep(TOUCH_POLL_MS)
-        reason = wake_reason()
-        if reason == machine.EXT0_WAKE:
-            return "button"
-        if is_touched():
-            return "touch"
+        _next_mode = None
+        _current_task = asyncio.create_task(mode.run())
+        try:
+            await _current_task
+        except asyncio.CancelledError:
+            pass
 
+        if _next_mode is not None:
+            mode = _next_mode
+            _next_mode = None
+            continue
 
-# On first boot treat it as a button wake so the display comes on immediately
-asyncio.run(run_awake_phase("button"))
+        break  # mode finished naturally → go to sleep
+
+    if initial_wake == WakeEvent.TOUCH:
+        while sleep_ctrl.is_touched():
+            await asyncio.sleep_ms(100)
+
+asyncio.run(run_awake_phase(WakeEvent.BUTTON))
 
 while True:
-    wake = run_sleep_phase()                # lightsleep owns CPU while display is off
-    asyncio.run(run_awake_phase(wake))      # asyncio owns CPU while display is on
+    wake = sleep_ctrl.wait_for_wake()       # lightsleep owns CPU
+    asyncio.run(run_awake_phase(wake))      # asyncio owns CPU
