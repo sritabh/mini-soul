@@ -147,10 +147,15 @@ class DisplayManager:
         """Continuously render the current mode.
 
         Face mode: yields every 200 ms — the face task drives its own rendering.
+        Screen mode: re-render every 200 ms so rapid state transitions (e.g.
+          CONNECTED → SAVED within the same second) are always visible.
         All other modes: re-render every second.
         """
         while True:
             if self._mode == "face":
+                await asyncio.sleep_ms(200)
+            elif self._mode == "screen":
+                self._render()
                 await asyncio.sleep_ms(200)
             else:
                 self._render()

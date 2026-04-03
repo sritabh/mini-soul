@@ -81,7 +81,7 @@ class SettingsScreen(UIScreen):
                 pw_line   = self.password or "?"
                 self._draw_centered(oled, [
                     "WiFi: " + ssid_line,
-                    "PW: " + pw_line
+                    "PW: " + pw_line,
                 ])
             elif self.state == self.CONNECTED:
                 ip_line = self.ip or "?"
