@@ -11,7 +11,7 @@ from button import Button
 SLEEP_TIMEOUT_MS    = 10000
 TOUCH_POLL_MS       = 400
 
-BUTTON_PIN          = 2
+BUTTON_PIN          = 1
 TOUCH_PIN           = 4
 TOUCH_THRESHOLD_PCT = 1.2
 
@@ -105,3 +105,4 @@ asyncio.run(run_awake_phase("button"))
 while True:
     wake = run_sleep_phase()                # lightsleep owns CPU while display is off
     asyncio.run(run_awake_phase(wake))      # asyncio owns CPU while display is on
+

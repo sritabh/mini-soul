@@ -10,7 +10,7 @@ FLAG_VALUE = 0xAB
 _rtc_pwr = Pin(6, Pin.OUT, value=1)
 time.sleep_ms(10)  # allow rail to stabilise
 
-i2c = SoftI2C(sda=Pin(8), scl=Pin(9))
+i2c = SoftI2C(sda=Pin(10), scl=Pin(11))
 rtc = DS3231(i2c)
 
 
