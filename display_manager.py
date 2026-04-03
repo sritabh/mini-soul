@@ -40,6 +40,7 @@ class DisplayManager:
         self._timer_task = None
         self._face      = None
         self._face_task = None
+        self._current_screen = None
 
     # ── Wake from sleep ───────────────────────────────────────────────────
 
@@ -97,6 +98,12 @@ class DisplayManager:
         self._mode = "face"
         self._face_task = asyncio.create_task(self._face.run())
 
+    def show_screen(self, screen):
+        """Switch to a custom UIScreen.  screen.render(oled) is called every second."""
+        self._cancel_timer()
+        self._current_screen = screen
+        self._mode = "screen"
+
     # ── Timer helpers ─────────────────────────────────────────────────────
 
     def _cancel_face(self):
@@ -133,6 +140,8 @@ class DisplayManager:
             for i, line in enumerate(self._text_lines):
                 self.oled.text(line, 0, y0 + i * line_h)
             self.oled.show()
+        elif self._mode == "screen" and self._current_screen is not None:
+            self._current_screen.render(self.oled)
 
     async def run(self):
         """Continuously render the current mode.

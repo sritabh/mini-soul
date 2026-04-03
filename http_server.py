@@ -13,13 +13,18 @@ class HttpServer:
         self._on_started   = on_started   or _noop
         self._on_connected = on_connected or _noop
         self._on_saved     = on_saved     or _noop
+        self._server = None
+        self._ap     = None
 
     # ── Hotspot ───────────────────────────────────────────────────────────────
+
+    SSID     = "MiniSoul"
+    PASSWORD = "myminisoul"
 
     def _start_hotspot(self):
         ap = network.WLAN(network.AP_IF)
         ap.active(True)
-        ap.config(essid="MiniSoul", password="myminisoul", authmode=3)
+        ap.config(essid=self.SSID, password=self.PASSWORD, authmode=3)
         while not ap.active():
             pass
         print("Hotspot started:", ap.ifconfig())
@@ -161,10 +166,10 @@ class HttpServer:
     # ── Public entry point ────────────────────────────────────────────────────
 
     async def run_server(self):
-        ap = self._start_hotspot()
-        ip = ap.ifconfig()[0]
-        self._on_started(ip)
-        await asyncio.start_server(self._handle_connection, "0.0.0.0", 80)
+        self._ap = self._start_hotspot()
+        ip = self._ap.ifconfig()[0]
+        self._on_started(ip, self.SSID, self.PASSWORD)
+        self._server = await asyncio.start_server(self._handle_connection, "0.0.0.0", 80)
         print("Listening on port 80...")
         from mdns import run_mdns
         asyncio.create_task(run_mdns('minisoul', ip))
@@ -172,16 +177,27 @@ class HttpServer:
         while True:
             await asyncio.sleep(3600)
 
+    def stop(self):
+        """Shut down the TCP server and tear down the Wi-Fi hotspot."""
+        if self._server is not None:
+            self._server.close()
+            self._server = None
+        if self._ap is not None:
+            self._ap.active(False)
+            self._ap = None
+        print("HttpServer stopped.")
+
 
 # ── Standalone execution ──────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     from qr_display import show_qr
 
-    def on_started(ip):
-        from machine import SoftI2C, Pin
+    def on_started(ip, ssid, password):
+        from machine import Pin
+        from rtc_utils import i2c
         from ssd1306 import SSD1306_I2C
-        i2c  = SoftI2C(sda=Pin(8), scl=Pin(9))
+        Pin(7, Pin.OUT, value=1)   # power OLED VCC rail
         oled = SSD1306_I2C(128, 64, i2c)
         show_qr(oled, "http://{}/".format(ip), scale=2)
         print("Showing QR for", ip)
@@ -193,4 +209,8 @@ if __name__ == '__main__':
         print("Settings saved:", config.get('name'))
 
     server = HttpServer(on_started=on_started, on_connected=on_connected, on_saved=on_saved)
-    asyncio.run(server.run_server())
+    try:
+        asyncio.run(server.run_server())
+    except KeyboardInterrupt:
+        print("Shutting down server...")
+        server.stop()
